@@ -1,0 +1,3215 @@
+#### Last Updated : 2012/05/30 20:05:18 tkych
+
+
+##====================================================================
+#+TITLE:  PreScript: Lispized PostScript
+#+AUTHOR: Takaya OCHIAI
+#+EMAIL:  tkych.repl@gmail.com
+#+LANGUAGE: ja
+#+STYLE:    <link rel="stylesheet" type="text/css" href="style.css" />
+#+OPTIONS:  todo:t f:t *:t creator:t email:t timestamp:t toc:2
+##====================================================================
+
+*!!!Warning!!!*
+
+*Current version of PreScript is 0.0.06 (experimental alpha).*
+
+*Current purpose of PreScript repository is to back up files.*
+
+*Current status of this document is a mere devlopment-note.*
+
+##--------------------------------------------------------------------
+* はじめに
+##--------------------------------------------------------------------
+
+
+大げさに言えば、CommonLisp -> PostScriptコンパイラ。
+平たく言えば、PostScriptインターフェイス for Common Lisp。
+
+ページ記述言語PostScriptは、プリンタ
+
+
+スタックを利用した拡張性
+逆ポーランド記法
+プログラミング言語
+
+しかしながら、PostScriptでコーディングする際は、常にスタックの状態を考慮せねばならず、
+出来上がったPostScriptプログラムは可読性に優れたものとは言えない。
+
+lispの前置記法を後置記法に置き換えれば良いというものではない。
+
+
+PreScript開発の目的は、
+スタックを考慮せずに可読性に優れたコードで画像生成が可能にすることである。
+
+##--------------------------------------------------------------------
+* インストール
+##--------------------------------------------------------------------
+
+
+##--------------------------------------------------------------------
+* 目標
+##--------------------------------------------------------------------
+
+   PostScriptをCommonLispに取り込む。
+
+1. ページ記述言語CommonLisp ::
+   CommonlispにPostScriptの図形描写能力を備わせる。
+
+2. 関数型オブジェクト指向マルチパラダイムPostScript :: 
+   lispの柔軟性、可読性、再利用性、拡張性の利点をPostScriptに与え、プログラムを書きやすくする。
+   スタック操作オペレータを陽に用いずにプログラムが書けるように。
+
+3. CL calculate, PS draw only ::
+   PostScriptの実行時計算をCommonLispに荷わせることで、高速なpsファイルを生成できるようにする。
+   ただし、lisp的に自然なプログラミング方法で、自ずと効率的なpsファイルが生成できるように。
+
+
+実装時、目的1,2,3が同時に成り立たず、選択が必要な場合、
+美、柔軟性、自由度のバランスを十分考慮すること。
+
+
+##--------------------------------------------------------------------
+* PreScriptのゴール
+##--------------------------------------------------------------------
+
+Common Lispには、画像を生成する機能がない。
+したがって、Lispプログラマが画像を描く際にはLisp以外の別な言語を使用しなければならない。
+その際、しばしば用いられる言語がPostScriptである。
+(例えば、CLtL2のには、数学的関数の挙動振る舞いをプロットするPostScriptコードを生成するCLプログラムが掲載されている)
+ページ記述言語PostScriptは、チューリング完全なプログラミング言語で、
+いわゆるインタプリタ型、かつスタック指向で、画像生成のための多数のオペレータを持つ。
+スタックを活用することで、Lispに匹敵するほどの拡張性を持つ。
+PSプリンタによって使用されている。
+
+スタック機構によりサポートされる拡張性が、PostScriptの力の源泉となっている。
+しかしながら、スタック機構の存在は諸刃の剣である。
+なぜなら、プログラマは常に(スタックの内容に依存する)環境を考慮しつつプログラムの読み書きをしなければならないからだ
+(もともとPostScriptは人間が読み書きすることよりも機械が生成することを重視して設計されている)。
+このことをLispに置き換えるなら、
+プログラム実行の過程で刻一刻と変化するグローバル変数の値に依存し、
+すべての関数やマクロの振る舞いが変化するようなものである。
+PostScriptプログラマは常にそのグローバル変数の値を気にしつつ、コードの読み書きをしなければならない。
+
+PreScriptのゴールは、上述の不便さを解消すること、すなわち、次の3点を達成することである。
+
+1. Common Lispに画像生成機能を備えさせること。
+2. スタックの存在を意識せずに、プログラムの読み書きが可能になるようにすること。
+3. スタック機構が支える拡張性は維持すること。
+
+--------------------------------------------------------------------
+
+このような試みは過去にも行われている。
+PLisp (PostScript Lisp)は同様の動機、別の設計の基で開発されたコンパイラである。
+
+違い：
+
+PLispはCLtL1のためCLOS, Package Sytemはない。
+PLispは、PostScriptやLispとは異なる言語として設計されており、
+Lispの制御オペレータ(funcall, apply, function, do, do*, dolist, defunなど)はPLispのオペレータとして再定義されている。
+したがって、素のLispをPLispから使うことはできない。
+
+PreScriptは、PostScriptやLispとは異なる言語ではなく、埋め込み言語としてLispの拡張になるように設計されている。
+PostScriptオペレータによる画像生成のための操作以外の部分で、素のLispを活用することができる。
+これにより、あらかじめコストのかかる計算をLispに担わせることで、
+PostScriptインタープリタによる計算を極力減らすという方法が可能になる。
+
+
+##--------------------------------------------------------------------
+* 実装指針
+##--------------------------------------------------------------------
+
+PostScriptシンタックスとPostScriptイメージングモデルは互いに独立している。
+一方を採用することが、必ずしも他方も採用することにつながるものではない。
+PreScriptはPostScriptイメージングモデルを採用するが、シンタックスは独自のものを採用する。
+ただし、オペレータ名はPostScriptに準ずるものとする。
+
+
+
+##--------------------------------------------------------------------
+** イメージングモデル
+##--------------------------------------------------------------------
+
+ユーザースペースのグラフィック状態をドローオペレータにより操作し絵を描き、
+ユーザースペースにアウトプットオペレータを作用させ画像を出力する。
+
+*** ユーザースペース
+
+ユーザースペースはキャンバスを抽象化したオブジェクト。
+無限の広さを持つ。
+左下を原点とする2次元デカルト座標の値により、ユーザースペース中の点を指定する。
+ユーザースペースはグラフィック状態と呼ばれる状態を持つ。
+グラフィック状態は次の??(未定)つの値により定まる。
+1. ポイント
+2. CTM
+3. フォント
+4. 色
+
+
+*** ドローオペレータ
+
+ドローオペレータは画家がキャンバスに絵を描く際の動作を抽象化した操作。
+操作名はPostScriptオペレータに準ずる。
+すべてのドローオペレータは、ユーザースペース上の演算として閉じている。
+
+- 筆をキャンバスに置く: newpath
+- 線を下書きする: パスオペレータ
+- 線を本書きする: stroke, draw
+- キャンバスの配置をずらす: translate
+
+
+- showpage
+
+
+メモ：
+showpageに対応する現実の動作は何か？
+
+
+*** アウトプットオペレータ
+
+アウトプットオペレータは、画家が絵を見る動作を抽象化した操作。
+現実世界では、絵を描く動作と絵を見る動作を分けて考えることはあまりない。
+しかし、コンピュータ上で絵を描くには両者の間にコードの変換(コンパイル)が必要なので両者は明確に分かれる。
+
+- ps-output: psコードを標準出力に表示する
+- ps-view: 画像をgvに出力する
+
+
+
+Clojureマクロ =->= を用いることでPreScriptコードは簡潔になる。
+#+BEGIN_SRC lisp :exports code
+  (defmacro -> (x &rest form)
+    "From clojure. Inserts x as the second item in the first form,
+  making a list of it if it is not a list already. If there are more
+  forms, inserts the first form as the second item in second form, etc."
+    (cond ((null    form) x)
+          ((single? form) (let ((elt (first form)))
+                            (if (consp elt)
+                                `(,(first elt) ,x ,@(rest elt))
+                                `(,elt ,x))))
+          (t `(-> (-> ,x ,(first form)) ,@(rest form)))))
+  
+  (defun single? (lst) (and (consp lst) (not (cdr lst))))
+#+END_SRC
+
+メモ：
+->をアウトプットオペレータに組み入れた方が、
+PreScriptコードはより簡潔になるだろうか？
+ユーザの自由度を制限することにならないか？
+
+
+##--------------------------------------------------------------------
+** PS実行モデル
+##--------------------------------------------------------------------
+
+user-space
+
+
+ディクショナリ
+
+スタックは陽に用いない。
+ただし、用いることもできるように。
+
+手続き
+
+#+BEGIN_SRC lisp :exports code
+;; defop: make ps op, in prescript (all user-space)
+(defop box (dx dy)
+  (rlineto dx 0)
+  (rlineto 0 dy)
+  (rlineto (- dx) 0)
+  (closepath))
+->
+(defun box (space dx dy)
+  (-> space
+      (rlineto dx 0)
+      (rlineto 0 dy)
+      (rlineto (- dx) 0)
+      (closepath)))
+#+END_SRC
+
+#+BEGIN_SRC lisp :exports code
+;; defproc: make ps proc, in user-space: s
+(defproc s box (dx dy)
+  (rlineto dx 0)
+  (rlineto 0 dy)
+  (rlineto (neg dx) 0)
+  (closepath))
+#+END_SRC
+
+
+
+
+##====================================================================
+* Examples in Blue Book
+##====================================================================
+
+
+##====================================================================
+** Ch.3 Beginning Graphics
+##====================================================================
+
+##--------------------------------------------------------------------
+*** Example 3.1, p.23
+##--------------------------------------------------------------------
+PostScript style
+#+BEGIN_SRC lisp :exports code
+  (ps-view
+   (-> (make-space)
+       (newpath)
+       (moveto 252 324) (rlineto 72 0) (rlineto 0 72) (rlineto -72 0)
+       (closepath) (filly)
+       (newpath)
+       (moveto 270 360) (rlineto 72 0) (rlineto 0 72) (rlineto -72 0)
+       (closepath) (setgray .4) (filly)
+       (newpath)
+       (moveto 288 396) (rlineto 72 0) (rlineto 0 72) (rlineto -72 0)
+       (closepath) (setgray .8) (filly)
+       (showpage)))
+#+END_SRC
+
+##---------------------------------
+PreScript style
+
+*注:*
+以下のコードの関数はLispの関数なので、最適なPSコードを生成しない。
+後に解説するdefprocを用いて、
+PSの手続きとして関数を定義した方が最適なPSコードが生成される。
+#+BEGIN_SRC lisp :exports code
+  ;; points := ((x1 y1) (x2 y2) ...)
+  (defun rlines (space points)
+    (dolist (point points)
+      (apply #'rlineto space point))
+    space)
+  
+  (defun mrlines (space points)
+    (apply #'moveto space (first points))
+    (rlines space (rest points))
+    space)
+  
+  (defun nmrlines (space points)
+    (-> space
+        (newpath)
+        (mrlines points)))
+  
+  (defun fill-gray (space gray-scale)
+    (-> space
+        (setgray gray-scale)
+        (filly)))
+  
+  (defun gray-box-at (space gray-scale box-scale x-pos y-pos)
+    (-> space
+        (nmrlines `((,x-pos ,y-pos)
+                    (,box-scale 0) (0 ,box-scale) (,(- box-scale) 0)))
+        (closepath)
+        (fill-gray gray-scale)))
+
+  ;; 一見、下のLispコードは簡潔だが、生成されるPostScriptコードは簡潔ではない
+  ;; 後に導入するdefprocを使用すると、PostScriptの手続きを定義することができ、
+  ;; より簡潔なLispコード & PSコードとなる
+  (ps-view
+   (-> (make-space)
+       (gray-box-at  0 72 252 324)
+       (gray-box-at .4 72 270 360)
+       (gray-box-at .8 72 288 396)
+       (showpage)))
+#+END_SRC
+
+
+##---------------------------------
+And more
+#+BEGIN_SRC lisp :exports code
+  (ps-view
+   (do ((i 150 (- i 10))
+        (j 50 (+ j 18))
+        (k 50 (+ k 36))
+        (n 0 (mod (1+ n) 3))
+        (space (make-space) (gray-box-at space (* 0.4 n) i j k)))
+       ((< i 10) space)))
+#+END_SRC
+
+
+##====================================================================
+** Ch.4 Procedures and Variables
+##====================================================================
+##--------------------------------------------------------------------
+*** Example 4.1, p.30
+##--------------------------------------------------------------------
+PostScript style
+
+#+BEGIN_SRC lisp :exports code
+  (ps-view
+   (-> (make-space)
+       (defproc box ()
+         (rlineto 72 0)
+         (rlineto 0 72)
+         (rlineto -72 0)
+         (closepath))
+       (newpath) (moveto 252 324) (box) (fill-gray  0)
+       (newpath) (moveto 270 360) (box) (fill-gray .4)
+       (newpath) (moveto 288 396) (box) (fill-gray .8)
+       (showpage)))
+#+END_SRC
+
+##---------------------------------
+PreScript style
+
+#+BEGIN_SRC lisp :exports code
+  (ps-view
+   (-> (make-space)
+       (defproc box-at (x y gray-scale)
+         (newpath)
+         (moveto x y)
+         (rlineto 72 0)
+         (rlineto 0 72)
+         (rlineto -72 0)
+         (closepath)
+         (fill-gray gray-scale))
+       (box-at 252 324 0)
+       (box-at 270 360 .4)
+       (box-at 288 396 .8)
+       (showpage)))
+#+END_SRC
+
+defprocは下の様に用いることもできる。
+#+BEGIN_SRC lisp :exports code
+  (setf s (make-space))
+  
+  (defproc s box-at (x y gray-scale)
+    (newpath)
+    (moveto x y)
+    (rlineto 72 0)
+    (rlineto 0 72)
+    (rlineto -72 0)
+    (closepath)
+    (fill-gray gray-scale))
+  
+  (ps-view
+   (-> s
+       (box-at 252 324 0)
+       (box-at 270 360 .4)
+       (box-at 288 396 .8)
+       (showpage)))
+#+END_SRC
+
+上の2つのPreScriptコードは同じPostScriptコードを生成する(下のPSコード)
+#+BEGIN_SRC ps :exports code
+%!PS-Adobe-3.0
+%%------------------- Procedure ------------------
+/box-at { %def
+ /GRAY-SCALE exch def /Y exch def /X exch def
+  newpath
+  X Y moveto
+  72 0 rlineto
+  0 72 rlineto
+  -72 0 rlineto
+  closepath
+  GRAY-SCALE setgray
+  fill } bind def
+%%------------------- Program ---------------------
+252 324 0 box-at
+270 360 0.4 box-at
+288 396 0.8 box-at
+showpage
+#+END_SRC
+
+
+##---------------------------------
+いささか技巧的な例
+#+BEGIN_SRC lisp :exports code
+  (defun move-gray (space shape x-pos y-pos gray-scale)
+    (-> space
+        (newpath)
+        (moveto x-pos y-pos))
+    (funcall shape space)
+    (fill-gray space gray-scale))
+
+  (ps-view
+   (-> (make-space)
+       (defproc box ()
+         (rlineto 72 0) (rlineto 0 72) (rlineto -72 0)
+         (closepath))
+       (move-gray 'box 252 324  0)
+       (move-gray 'box 270 360 .4)
+       (move-gray 'box 288 396 .8)
+       (showpage)))
+
+  (ps-view
+   (-> (make-space)
+       (defproc circle ()
+           (arc (currentpoint) 60 0 360))
+       (move-gray 'circle 252 324  0)
+       (move-gray 'circle 270 360 .4)
+       (move-gray 'circle 288 396 .8)
+       (showpage)))
+#+END_SRC
+
+
+##====================================================================
+** Ch.5 Printing Text
+##====================================================================
+##--------------------------------------------------------------------
+*** Example 5.1, p.36
+##--------------------------------------------------------------------
+PostScript style
+#+BEGIN_SRC lisp :exports code
+  (ps-view
+   (-> (make-space)
+       (findfont #"Times-Roman")
+       (scalefont 15)
+       (setfont)
+       (moveto 72 200)
+       (show "typography")
+       (showpage)))
+#+END_SRC
+
+### fanctional style
+#+BEGIN_SRC lisp :exports code
+(ps-view
+  (setfont (scalefont 15 (findfont #"Times-Roman")))
+  (moveto 72 200)
+  (show "typography")
+  (showpage))
+#+END_SRC
+
+##---------------------------------
+## added ps-op set-font, its definition is like this,
+## (defun set-font (font-name &optional (scale/matrix 1))
+##   (findfont font-name)
+##   (if (numberp scale/matrix)
+##       (when (/= scale/matrix 1)
+##         (scalefont scale/matrix))
+##       (makefont scale/matrix))
+##   (setfont))
+
+#+BEGIN_SRC lisp :exports code
+(defun show-at (string x-pos y-pos)
+  (moveto x-pos y-pos)
+  (show string))
+
+(ps-view
+  (set-font #"Times-Roman" 15)
+  (show-at "typography" 72 200)
+  (showpage))
+#+END_SRC
+
+##---------------------------------
+#+BEGIN_SRC lisp :exports code
+(defun show-sentence-at (string font-name font-scale/matrix x-pos y-pos)
+  (set-font font-name font-scale/matrix)
+  (show-at string x-pos y-pos))
+
+(ps-view
+  (show-sentence-at "typography" #"Times-Roman" 15 72 200)
+  (showpage))
+#+END_SRC
+
+##--------------------------------------------------------------------
+*** Example 5.2, p.38
+##--------------------------------------------------------------------
+PostScript style
+(ps-view
+  (def showGorilla {(moveto) (show "Gorilla")})
+  (set-font #"Times-Roman"  6)            # Example 5.1
+  (showGorilla 72 300)
+  (set-font #"Times-Roman" 10)
+  (showGorilla 72 275)
+  (set-font #"Times-Roman" 15)
+  (showGorilla 72 250)
+  (set-font #"Times-Roman" 20)
+  (showGorilla 72 225)
+  (showpage))
+
+##---------------------------------
+### lisp-like style
+### (Less efficiency, but more readable & reusable.)
+(ps-view
+  (show-sentence-at "Gorilla" #"Times-Roman"  6 72 300)
+  (show-sentence-at "Gorilla" #"Times-Roman" 10 72 275)
+  (show-sentence-at "Gorilla" #"Times-Roman" 15 72 250)
+  (show-sentence-at "Gorilla" #"Times-Roman" 20 72 225)
+  (showpage))
+
+(defun show-Gorilla (x-pos y-pos font-scale)
+  (show-sentence-at "Gorilla" #"Times-Roman" font-scale x-pos y-pos))
+
+(ps-view
+  (show-Gorilla 72 300  6)
+  (show-Gorilla 72 275 10)
+  (show-Gorilla 72 250 15)
+  (show-Gorilla 72 225 20)
+  (showpage))
+
+
+##--------------------------------------------------------------------
+*** Example 5.3, p.40 [Typefaces]
+##--------------------------------------------------------------------
+PostScript style
+
+## (moveto 72 (vpos)) => vpos 72 moveto # !!!
+## (trans-args (moveto 72 (vpos))) => 72 vpos moveto # !!!
+(ps-view
+  (def vpos 720)
+  (def wordy "Typefaces")
+  (def choosefont {(setfont (findfont) (scalefont 15))})
+  (def newline {(def vpos (sub (vpos) 15))
+                (trans-args (moveto 72 (vpos)))})    # !!!
+  (def printword {(choosefont) (show (wordy)) (newline)})
+  (trans-args (moveto 72 (vpos)))                    # !!!
+  (printword #"Times-Roman")
+  (printword #"Times-Bold")
+  (printword #"Times-Italic")
+  (printword #"Times-BoldItalic")
+  (newline)
+  (printword #"Helvetica")
+  (printword #"Helvatica-Bold")
+  (printword #"Helvatica-Oblique")
+  (printword #"Helvatica-BoldOblique")
+  (newline)
+  (printword #"Courier")
+  (printword #"Courier-Bold")
+  (printword #"Courier-Oblique")
+  (printword #"Courier-BoldOblique")
+  (newline)
+  (printword #"Symbol")
+  (showpage))
+
+
+###--------------------------------
+### !!! after lety-expand, trans-vars expand. 
+
+##---------------------------------
+(defun show-sentence-at (string font-name font-scale/matrix x-pos y-pos)
+  (set-font font-name font-scale/matrix)
+  (show-at string x-pos y-pos))
+
+(defun show-at (string x-pos y-pos)
+  (moveto x-pos y-pos)
+  (show string))
+
+##---------------------------------
+(defmacro show-sentence-at2 (string font-name font-scale/matrix
+                             x-pos y-pos)
+  `(progn
+     (set-font ,font-name ,font-scale/matrix)
+     (show-at2 ,string ,x-pos ,y-pos)))
+
+(defmacro show-at2 (string x-pos y-pos)
+  `(progn
+     (trans-args (moveto ,x-pos ,y-pos))
+     (show ,string)))
+
+(ps-view
+  (lety ((vpos 720))
+    (def-proc new-line () ()
+      (setfy vpos (sub vpos 15)))
+    (def-proc print-word (font) ()
+     (show-sentence-at2 "Typefaces" font 15 72 vpos) # !!!
+     (new-line))
+    (print-word #"Times-Roman")
+    (print-word #"Times-Bold")
+    (print-word #"Times-Italic")
+    (print-word #"Times-BoldItalic")
+    (new-line)
+    (print-word #"Helvetica")
+    (print-word #"Helvatica-Bold")
+    (print-word #"Helvatica-Oblique")
+    (print-word #"Helvatica-BoldOblique")
+    (new-line)
+    (print-word #"Courier")
+    (print-word #"Courier-Bold")
+    (print-word #"Courier-Oblique")
+    (print-word #"Courier-BoldOblique")
+    (new-line)
+    (print-word #"Symbol")
+    (showpage)))
+
+## ->
+## %!PS-Adobe-3.0
+## /vpos 720 def
+## /new-line { /vpos vpos 15 sub def } def
+## /print-word { /font exch def 
+##               font findfont 15 scalefont setfont
+##               72 vpos moveto
+##               (Typefaces) show 
+##               new-line } def
+## /Times-Roman print-word
+## /Times-Bold print-word
+## /Times-Italic print-word
+## /Times-BoldIitalic print-word
+## new-line
+## /Helvetica print-word
+## /Helvatica-Bold print-word
+## /Helvatica-Oblique print-word
+## /Helvatica-BoldOblique print-word
+## new-line
+## /Courier print-word
+## /Courier-Bold print-word
+## /Courier-Oblique print-word
+## /Courier-BoldOblique print-word
+## new-line
+## /Symbol print-word
+## showpage
+
+##---------------------------------
+### lisp-like style
+
+## (ps-view
+##   (let ((vpos 735))
+##     (mapc #'(^ (font-names)
+##                (mapc #'(^ (font-name)
+##                           (show-string "Typefaces" # Example 5.2
+##                                        72 (decf vpos 15)
+##                                        font-name 15))
+##                      font-names)
+##                (show-string "" 72 (decf vpos 15) #"Times-Roman" 15))
+##           '((#"Times-Roman" #"Times-Bold" #"Times-Italic" 
+##              #"Times-BoldIitalic")
+##             (#"Helvetica" #"Helvatica-Bold" #"Helvatica-Oblique"
+##              #"Helvatica-BoldOblique")
+##             (#"Courier" #"Courier-Bold" #"Courier-Oblique"
+##              #"Courier-BoldOblique")
+##             (#"Symbol")))))
+
+
+##--------------------------------------------------------------------
+*** Example 5.4, p.42 [Diamond Club]
+##--------------------------------------------------------------------
+PostScript style
+(ps-view
+  (def Mainfont (findfont #"Helvetica-Bold")
+                (scalefont 15))
+  (def Sloganfont (findfont #"Helvetica-Oblique")
+                  (scalefont 7))
+  (def Ownerfont (findfont #"Helvetica")
+                 (scalefont 10))
+  (def rightshow {(rmoveto (sub (exch (popy (stringwidth (dup)))
+                                      120))
+                           0)
+                  (show)})
+  (def CardOutline {(newpath)
+                    (closepath
+                     (mrlines '((90 90) (0 144) (252 0) (0 -144))))
+                    (setlinewidth .5)
+                    (stroke)})
+  (def doBorder {(closepath
+                  (mrlines '((99 99) (0 126) (234 0) (0 -126))))
+                 (setlinewidth 2)
+                 (stroke)})
+  (def Diamond {(newpath)
+                (closepath
+                 (mrlines '((207 216) (36 -54) (-36 -54) (-36 54))))
+                (fill-gray .8)})
+  (def doText {(setgray 0)
+               (moveto 90 180)
+               (setfont (MainFont))
+               (rightshow "Diamond Cafe")
+               (moveto 90 168)
+               (setfont (SloganFont))
+               (rightshow "\"The Club of Lonely Hearts\"")
+               (moveto 216 126)
+               (setfont (OwnerFont))
+               (show "Sam Spade")
+               (moveto 216 111)
+               (show "Owner")})
+  (CardOutline)
+  (doBorder)
+  (Diamond)
+  (doText)
+  (showpage))
+
+### c.f.
+## (def-proc right-show (str) ()
+##   (rmoveto (sub (y-value (stringwidth str))
+##                 120)
+##            0)
+##   (show str))
+
+## (defuny right-show (str)
+##   (rmoveto (sub (y-value (stringwidth str))
+##                 120)
+##            0)
+##   (show str))
+
+##---------------------------------
+(defmacro show-sentence-at2 (string font-name font-scale/matrix
+                             x-pos y-pos)
+  `(progn
+     (set-font ,font-name ,font-scale/matrix)
+     (show-at2 ,string ,x-pos ,y-pos)))
+
+(defmacro show-at2 (string x-pos y-pos)
+  `(progn
+     (trans-args (moveto ,x-pos ,y-pos))
+     (show ,string)))
+
+(ps-view
+  (lety ((main-font   (scalefont 15 (findfont #"Helvetica-Bold")))
+         (slogan-font (scalefont  7 (findfont #"Helvetica-Oblique")))
+         (owner-font  (scalefont 10 (findfont #"Helvetica"))))
+    (def-proc card-outline () ()
+      (closepath
+       (mrlines '((90 90) (0 144) (252 0) (0 -144))))
+      (setlinewidth .5)
+      (stroke))
+    (def-proc border () ()
+      (closepath
+       (mrlines '((99 99) (0 126) (234 0) (0 -126))))
+      (setlinewidth 2)
+      (stroke))
+    (def-proc diamond () ()
+      (closepath
+       (mrlines '((207 216) (36 -54) (-36 -54) (-36 54))))
+      (fill-gray .8))
+    (def-proc right-show-sentence-at (str font x-pos y-pos) ()
+      (apply #'setfont font)
+      (moveto x-pos y-pos)
+      (rmoveto (sub (x-value (stringwidth 120 str))) 0)
+      (show str))
+    (newpath) (card-outline)
+    (border)
+    (newpath) (diamond)
+    (setgray 0)
+    (trans-args                         # !!!
+     (right-show-sentence-at
+      "Diamond Cafe" main-font 90 180))
+    (trans-args                         # !!!
+     (right-show-sentence-at
+      "\"The Club of Lonely Hearts\"" slogan-font 90 168))
+    (setfont owner-font)
+    (show-at2 "Sam Spade" 216 126)
+    (show-at2 "Owner"     216 111)
+    (showpage)))
+
+%!PS-Adobe-3.0
+/main-font /Helvetica-Bold findfont 15 scalefont def
+/slogan-font /Helvetica-Oblique findfont 7 scalefont def
+/owner-font /Helvetica findfont 10 scalefont def
+/card-outline   {   90 90 moveto
+                 0 144 rlineto
+                 252 0 rlineto
+                  0 -144 rlineto
+                  closepath 
+                 0.5 setlinewidth 
+                 stroke } def
+/border   {   99 99 moveto
+ 0 126 rlineto
+ 234 0 rlineto
+ 0 -126 rlineto
+ closepath 
+ 2 setlinewidth 
+ stroke } def
+/diamond   {   207 216 moveto
+ 36 -54 rlineto
+ -36 -54 rlineto
+ -36 54 rlineto
+ closepath 
+ 0.8 setgray
+ fill } def
+/right-show-sentence-at   {  
+/y-pos  exch def 
+/x-pos  exch def 
+/font  exch def 
+/str  exch def 
+ font setfont 
+ x-pos y-pos moveto 
+ str stringwidth pop 120 sub 0 rmoveto 
+ str show } def
+ newpath card-outline
+ border
+ newpath diamond
+ 0 setgray
+ (Diamond Cafe) main-font 90 180 right-show-sentence-at
+ ("The Club of Lonely Hearts") slogan-font 90 168 right-show-sentence-at
+ owner-font setfont
+ 216 126 moveto
+ (Sam Spade) show
+ 216 111 moveto
+ (Owner) show
+ showpage
+
+/rightshow   {  
+ dup stringwidth pop 120 exch sub 0 rmoveto  show } def
+/cardoutline   {  
+ newpath 
+ 90 90 moveto
+ 0 144 rlineto
+ 252 0 rlineto
+ 0 -144 rlineto
+ closepath 
+ 0.5 setlinewidth  stroke } def
+/doborder   {  
+ 99 99 moveto
+ 0 126 rlineto
+ 234 0 rlineto
+ 0 -126 rlineto
+ closepath 
+ 2 setlinewidth  stroke } def
+/diamond   {  
+ newpath 
+ 207 216 moveto
+ 36 -54 rlineto
+ -36 -54 rlineto
+ -36 54 rlineto
+ closepath 
+ 0.8 setgray fill } def
+/dotext   {  
+ 0 setgray 
+ 90 180 moveto 
+ mainfont setfont 
+ (Diamond Cafe) rightshow 
+ 90 168 moveto 
+ sloganfont setfont 
+ ("The Club of Lonely Hearts") rightshow 
+ 216 126 moveto 
+ ownerfont setfont 
+ (Sam Spade) show 
+ 216 111 moveto 
+ (Owner) show } def
+ cardoutline
+ doborder
+ diamond
+ dotext
+
+##---------------------------------
+### lisp-like style
+### (Less efficiency, but more readable & reusable.)
+
+(defun 4angle (x-side y-side x-pos y-pos
+               &key (line-width 1) (gray-scale 0) (fill nil))
+  (newpath)
+  (moveto x-pos y-pos)
+  (rlines `((0 ,y-side) (,x-side 0) (0 ,(* -1 y-side)))) # Example 3.1
+  (closepath)
+  (when (/= line-width 1) (setlinewidth line-width))
+  (when (/= gray-scale 0) (setgray gray-scale))
+  (when fill (filly))
+  (stroke)
+  (when (/= line-width 1) (setlinewidth 1))
+  (when (/= gray-scale 0) (setgray 0)))
+
+(defun diamond (x-diag/2 y-diag/2 x-pos y-pos
+                &key (line-width 1) (gray-scale 0) (fill nil))
+  (newpath)
+  (moveto x-pos y-pos)
+  (rlines `((,x-diag/2        ,(* -1 y-diag/2)) # Example 3.1
+            (,(* -1 x-diag/2) ,(* -1 y-diag/2))
+            (,(* -1 x-diag/2) ,y-diag/2)))
+  (closepath)
+  (when (/= line-width 1) (setlinewidth line-width))
+  (when (/= gray-scale 0) (setgray gray-scale))
+  (when fill (filly))
+  (stroke)
+  (when (/= line-width 1) (setlinewidth 1))
+  (when (/= gray-scale 0) (setgray 0)))
+
+(defun rightshow-string (string x-pos y-pos font-name font-scale)
+  (set-font font-name font-scale)       # Example 5.1
+  (moveto x-pos y-pos)
+  (rmoveto (- 120 (string-width string)) 0) # string-width is lisp fn.
+  (show string))
+
+(let ((main-font   '("Helvetica-Bold"    15))
+      (slogan-font '("Helvetica-Oblique"  7))
+      (owner-font  '("Helvetica"         10)))
+  (ps-view
+    (4angle 252 144 90 90 :line-width .5)
+    (4angle 234 126 99 99 :line-width  2)
+    (diamond 36 54 207 216 :gray-scale .8 :fill t)
+    (apply #'rightshow-string "Diamond Cafe" 90 180 main-font)
+    (apply #'rightshow-string "\"The Club of Lonely Hearts\""
+           90 168 slogan-font)
+    (apply #'show-string "Sam Spade" 216 126 owner-font) # Example 5
+    (apply #'show-string "Owner"     216 111 owner-font) # Example 5
+    (showpage)))
+
+
+
+##====================================================================
+** Ch.6 More Graphics
+##====================================================================
+##--------------------------------------------------------------------
+*** Example 6.1, p.49
+##--------------------------------------------------------------------
+## ps-like style
+(ps-view
+  (set-font #"Times-Roman" 30)
+  (def square-box {(newpath)
+                   (closepath
+                    (mlines '((0 0) (90 0) (90 90) (0 90))))
+                   (filly)
+                   (moveto 6 92)
+                   (show "A Box")})
+  (square-box)
+  (translate 300 150)
+  (rotate 60)
+  (square-box)
+  (translate 300 150)
+  (rotate 60)
+  (square-box)
+  (showpage))
+
+##---------------------------------
+## lisp-like style
+## (Less efficiency, but more readable & reusable & flexible.)
+
+(defun labeled-4angle (label x-side y-side x-pos y-pos
+               &key (line-width 1) (gray-scale 0) (fill nil))
+  (4angle x-side y-side x-pos y-pos     # Example 5.4
+          :line-width line-width
+          :gray-scale gray-scale :fill fill)
+  (moveto 6 (+ y-side 2))
+  (show label))
+
+(defun coordinate-transform (parallel-x parallel-y rot-degree)
+  (when (or (/= 0 parallel-x) (/= 0 parallel-y))
+    (translate parallel-x parallel-y))
+  (when (/= 0 rot-degree)
+    (rotate rot-degree)))
+
+(ps-view
+  (set-font #"Times-Roman" 30)
+  (labeled-4angle "A Box" 90 90 0 0 :fill t)
+  (coordinate-transform 300 150 60)
+  (labeled-4angle "A Box" 90 90 0 0 :fill t)
+  (coordinate-transform 300 150 60)
+  (labeled-4angle "A Box" 90 90 0 0 :fill t)
+  (showpage))
+
+##---------------------------------
+## and more
+(ps-view
+  (set-font #"Times-Roman" 30)
+  (labeled-4angle "Box A" 90 90 0 0 :gray-scale 0.0 :fill t)
+  (coordinate-transform 300 150 60)
+  (labeled-4angle "Box B" 90 90 0 0 :gray-scale 0.4 :fill t)
+  (coordinate-transform 300 150 60)
+  (labeled-4angle "Box C" 90 90 0 0 :gray-scale 0.8 :fill t)
+  (showpage))
+
+
+##--------------------------------------------------------------------
+*** Example 6., p.4
+##--------------------------------------------------------------------
+(ps-view
+  (def starside {(rlineto 72 0)
+                 (translate (currentpoint))
+                 (rotate -144)})
+  (def star {(moveto)
+             (repeat 4 (starside))
+             (closepath)
+             (gsave)
+             (setgray .5) (filly)
+             (grestore)
+             (stroke)})
+  (star 200 200)
+  (showpage))
+
+##---------------------------------
+## lisp-like style
+(defmacro local-gstate (&body body)
+  `(progn (gsave)
+          ,@body
+          (grestore)))
+
+
+(ps-view
+  (def starside {(rlineto 72 0)
+                 (translate (currentpoint))
+                 (rotate -144)})
+  (def star {(moveto)
+             (repeat 4 (starside))
+             (closepath)
+             (local-gstate (fill-gray .5))
+             (stroke)})
+  (star 200 200)
+  (showpage))
+
+
+##--------------------------------------------------------------------
+*** Example 6., p.4
+##--------------------------------------------------------------------
+(ps-view
+  (def doACircle {(stroke (arc 0 0 54 0 360))})
+  (def doAnEllipse {(scale 1 .75)
+                    (stroke (doACircle))})
+  (translate 300 500)
+  (doACircle)
+  (repeat 4 (translate 0 -72) (doAnEllipse))
+  (showpage))
+
+
+##---------------------------------
+## lisp-like style
+## (Less efficiency, but more readable & reusable & flexible.)
+
+
+##--------------------------------------------------------------------
+*** Example 6., p.58, OMAHA
+##--------------------------------------------------------------------
+## ps-like style
+(ps-view
+  (set-font #"Helvetica-Bold" 27)
+  (def 4pops (repeat 4 (popy)))
+  (def background
+    (moveto 0 18)
+    (4pops (arcto 0   72 108 78 18))
+    (4pops (arcto 108 72 108 0  18))
+    (4pops (arcto 108 0  0   0  18))
+    (4pops (arcto 0   0  0   72 18))
+    (filly))
+  (def moon
+    (setgray .6)
+    (filly (arc 81 45 18 0 360)))
+  (def omaha
+    (setgray 1)
+    (moveto 0 -1)
+    (scale 1 2)
+    (rmoveto 0 (div 2 (sub (exch 108 (popy (stringwidth "OMAHA"))))))
+    (show "OMAHA"))
+  (translate 255 465)
+  (omaha (moon (background)))
+  (showpage))
+
+##---------------------------------
+## lisp-like style
+## More efficiency & readable. 
+## "string-width" is not ps-op, but lisp-function.
+## Its run time is in running lisp system. 
+(ps-view
+  (set-font #"Helvetica-Bold" 27)
+  (def 4pops (repeat 4 (popy)))
+  (def background
+    (moveto 0 18)
+    (4pops (arcto 0   72 108 78 18))
+    (4pops (arcto 108 72 108 0  18))
+    (4pops (arcto 108 0  0   0  18))
+    (4pops (arcto 0   0  0   72 18))
+    (filly))
+  (def moon
+    (setgray .6)
+    (filly (arc 81 45 18 0 360)))
+  (def omaha
+    (setgray 1)
+    (moveto 0 -1)
+    (scale 1 2)
+    (rmoveto (/ (- 108 (string-width "OMAHA")) 2) 0)
+    (show "OMAHA"))
+  (translate 255 465)
+
+##---------------------------------
+## lisp-like style
+## More efficiency & readable. 
+## "string-width" is not ps-op, but lisp-function.
+## Its run time is in running lisp system. 
+(ps-view
+  (set-font #"Helvetica-Bold" 27)
+  (def 4pops {
+       (repeat 4 {(popy)})})
+  (def background
+    (moveto 0 18)
+    (4pops (arcto 0   72 108 78 18))
+    (4pops (arcto 108 72 108 0  18))
+    (4pops (arcto 108 0  0   0  18))
+    (4pops (arcto 0   0  0   72 18))
+    (filly))
+  (def moon
+    (setgray .6)
+    (filly (arc 81 45 18 0 360)))
+  (def omaha
+    (setgray 1)
+    (moveto 0 -1)
+    (scale 1 2)
+    (rmoveto (/ (- 108 (string-width "OMAHA")) 2) 0)
+    (show "OMAHA"))
+  (translate 255 465)
+  (omaha (moon (background)))
+  (showpage))
+  (omaha (moon (background)))
+  (showpage))
+
+
+##====================================================================
+** Ch.7 Loops and Conditionals
+##====================================================================
+
+##--------------------------------------------------------------------
+*** Example 7.1, p.63 [Mark Twain]
+##--------------------------------------------------------------------
+PostScript style
+(ps-view
+  (def LM 72)
+  (def RM 216)
+  (def ypos 720)
+  (def lineheight 14)
+  (def newline {(sub (ypos) (lineheight))
+                (def ypos (exch))
+                (moveto (LM) (ypos))})
+  (def prtstr {(ify (gt (add (popy (stringwidth (dup)))
+                             (popy (currentpoint)))
+                        (RM))
+                    (newline))
+               (show)})
+  (set-font #"Times-Italic" 13)
+  (moveto (LM) (ypos))
+  (prtstr "If ") (prtstr "you ") (prtstr "tell ") (prtstr "the ")
+  (prtstr "truth, ") (prtstr "you ") (prtstr "don't ")
+  (prtstr "have ") (prtstr "to ") (prtstr "remember ")
+  (prtstr "anything. ") (prtstr "- Mark ") (prtstr "Twain ")
+  (showpage))
+
+
+
+##---------------------------------
+(ps-view
+  (let ((left-margin 72) (right-margin 216)
+        (y-pos 720)      (line-height 14))
+    (defun newline ()
+      (moveto left-margin (decf y-pos line-height)))
+    (def prtstr
+      (popy (stringwidth (dup)))
+      (popy (currentpoint))
+      (gt right-margin (add))
+      (ify (newline))
+      (show))
+    (set-font #"Times-Iitalic" 13)
+    (moveto left-margin y-pos)
+    (mapc #'(^ (string)
+               (prtstr string))
+          '("(If )" "(you )" "(tell )" "(the )" "(truth, )"
+            "(you )" "(don't )" "(have )" "(to )" "(remember )"
+            "(anything.)" "(- Mark )" "(Twain )"))
+    (showpage)))
+
+##--------------------------------------------------------------------
+*** Example 7.2, p.66 [Planes]
+##--------------------------------------------------------------------
+PostScript style
+
+#+BEGIN_SRC lisp :exports code
+  (ps-view
+   (-> (make-space)
+       (def scalefactor 1)
+       (def counter 0)
+       (defproc DecreaseScale
+           (def scalefactor (sub (scalefactor) .2)))
+       (defproc IncreaseCounter
+           (def counter (add (counter) 1)))
+       (defproc trappath ()
+         (moveto 0 0)
+         (rlineto 90 0) (rlineto -20 45) (rlineto -50 0)
+         (closepath))
+       (defproc doATrap
+           (local-gstate
+            (scale (scalefactor 1))
+            (trappath)
+            (ifelse (eqy 0 (mody (counter) 2)) .5 0)
+            (fill-gray)))
+       (translate 250 350)
+       (repeat 5 (IncreaseCounter)
+                 (doATrap)
+                 (DecreaseScale)
+                 (translate 0 20))
+       (showpage)))
+#+END_SRC
+
+##---------------------------------
+#+BEGIN_SRC lisp :exports code
+(ps-view
+  (let ((scale-factor 1))
+    (def trappath {
+      (closepath (mrlines '((0 0) (90 0) (-20 45) (-50 0))))})
+    (translate 250 350)
+    (dotimes (counter 5)
+      (translate 0 20)
+      (gsave)
+      (scale 1 (decf scale-factor .2))
+      (trappath)
+      (fill-gray (if (evenp counter) 0.5 0))
+      (grestore))))
+#+END_SRC
+
+
+##--------------------------------------------------------------------
+*** Example 7.3, p.68 [Zip]
+##--------------------------------------------------------------------
+(ps-view
+  (set-font #"Times-Iitalic" 30)
+  (def printZip {(moveto 0 0)
+                 (show "Zip")})
+  (translate 320 400)
+  (fory .95 -.05 0
+        (setgray)
+        (printZip)
+        (translate -1 .5))
+  (setgray 1)
+  (printZip)
+  (showpage))
+
+
+##--------------------------------------------------------------------
+*** Example 7.4, p.69-70 [Line of Circle]
+##--------------------------------------------------------------------
+### 
+(ps-view
+  (def pagewidth (mul 8.5 72))
+  (def doCircle {(stroke (arc (xpos) (ypos) (radius) 0 360))}) #!!!
+  (def inc-x {(def xpos (add (xpos) (radius)))})
+  (def lineofcircle {(def ypos (exch))
+                     (def radius (exch))
+                     (def xpos 0)
+                     (loopy (ifelse (le (xpos) (pagewidth))
+                                    (inc-x (doCircle)) #!!!
+                                    (exit)))})
+  (lineofcircle 10 400)
+  (lineofcircle 30 400)
+  (lineofcircle 90 400)
+  (showpage))
+
+##---------------------------------
+(defun line-circles (x-pos y-pos radius)
+  (let ((page-width (* 8.5 72)))
+    (do ((i x-pos  (+ i radius)))
+        ((< page-width i))
+      (stroke
+       (arc i y-pos radius 0 360)))))
+
+(ps-view
+  (line-circles 0 400 10)
+  (line-circles 0 400 30)
+  (line-circles 0 400 90)
+  (showpage))
+
+##---------------------------------
+(defmacro setfy (old-val new-val)
+  (if (listp old-val)
+      `(def ,@old-val ,new-val)
+      `(def ,old-val ,new-val)))
+
+(defmacro doy (varlst endlst &body body)
+  `(lety ,(mapcar #'butlast varlst)
+     (loopy (ifelse (noty ,(1st endlst))
+                    (,@body
+                     ,@(mapcar #'(^ (lst)
+                                    `(setfy ,@(cons (1st lst)
+                                                    (cddr lst))))
+                               varlst))
+                    (exit)))))
+
+(defmacro <y  (num1 num2) `(lt ,num1 ,num2))
+(defmacro <=y (num1 num2) `(gt ,num1 ,num2))
+(defmacro >y  (num1 num2) `(le ,num1 ,num2))
+(defmacro >=y (num1 num2) `(ge ,num1 ,num2))
+
+(ps-view
+  (defuny line-circle (xpos ypos radius)
+    (lety ((page-width (mul 8.5 72)))
+      (doy ((i xpos (add i radius)))
+           ((<y page-width i))
+        (stroke (arc i ypos radius 0 360)))))
+  (line-circle 0 400 10)
+  (line-circle 0 400 30)
+  (line-circle 0 400 90)
+  (showpage))
+
+##--------------------------------------------------------------------
+*** Example 7.5, p.71 [Factorial]
+##--------------------------------------------------------------------
+(ps-view
+  (def LM 72)
+  (set-font #"Times-Roman" 15)
+  (def nstr (stringy 7))
+  (def newline {(sub (currentpoint) 16)
+                (exch) (popy)
+                (LM) (exch)
+                (moveto)})
+  (def factorial {(ify (gt (dup) 1)
+                       (mul (factorial (sub 1 (dup)))))})
+  (def prt-n {(show (cvs (nstr)))})
+  (def prtFactorial {(prt-n (dup))
+                     (show "! = ")
+                     (prt-n (factorial))
+                     (newline)})
+  (moveto (LM) 600)
+  (fory 1 1 10
+        (prtFactorial))
+  (showpage))
+
+##---------------------------------
+## That's cl-ps style!!
+## CL calculates, PS draws only.
+(defun fact (n)
+  (labels ((rec (n acc)
+             (if (= n 0)
+                 acc
+                 (rec (1- n) (* n acc)))))
+    (rec n 1)))
+
+(ps-view
+  (set-font #"Times-Roman" 15)
+  (let ((x-pos 72) (y-pos 616))
+    (dotimes (i 10)
+      (moveto x-pos (decf y-pos 16))
+      (show (string-append (write-to-string (1+ i))
+                           "! = "
+                           (write-to-string (fact (1+ i))))))
+    (showpage)))
+
+
+##--------------------------------------------------------------------
+*** Example 7.6, p.73-5 [Arrow Tree]
+##--------------------------------------------------------------------
+(ps-view
+  (def depth 0)
+  (def maxdepth 10)
+  (def down {(def depth (add (depth) 1))})
+  (def up {(def depth (sub (depth) 1))})
+  (def DoLine {(rlineto 0 144)
+               (currentpoint)
+               (stroke) (translate) (moveto 0 0)})
+  (def FractArrow {(local-gstate
+                     (scale .7 .7)
+                     (setlinewidth 10)
+                     (down) (DoLine)
+                     (ify (le (depth) (maxdepth))
+                          ((rotate  135) (FractArrow)
+                           (rotate -270) (FractArrow)))
+                     (up))})
+  (moveto 300 400)
+  (stroke (FractArrow))
+  (showpage))
+
+
+##---------------------------------
+ (defun do-line ()
+    (rlineto 0 144)
+    (currentpoint)
+    (stroke)
+    (translate)
+    (moveto 0 0))
+
+(defun do-circle ()
+  (arc 0 144 10 0 360)
+  (currentpoint)
+  (stroke)
+  (translate)
+  (moveto 0 0))
+
+(defun fract-arrow (depth reduction)
+  (gsave)
+  (scale reduction reduction)
+  (setlinewidth 10)
+  (do-line)
+  (when (< 0 depth)
+    (rotate 135)
+    (fract-arrow (1- depth) reduction)
+    (rotate -270)
+    (fract-arrow (1- depth) reduction))
+  (grestore))
+
+(ps-view
+  (moveto 300 400)
+  (fract-arrow 1 .7)
+  (stroke)
+  (showpage))
+
+
+##---------------------------------
+(ps-view
+  (def doline {(rlineto 0 144)
+               (currentpoint)
+               (stroke)
+               (translate)
+               (moveto 0 0)})
+  (defun fract-arrow (depth reduction)
+    (local-gstate
+      (scale reduction reduction)
+      (setlinewidth 10)
+      (doline)
+      (when (< 0 depth)
+        (rotate 135)
+        (fract-arrow (1- depth) reduction)
+        (rotate -270)
+        (fract-arrow (1- depth) reduction)))
+  (moveto 300 400)
+  (fract-arrow 10 .7)
+  (stroke)
+  (showpage))
+
+
+##====================================================================
+** Ch.8 Arrays
+##====================================================================
+
+
+##--------------------------------------------------------------------
+*** Example 8.1, p.79 [Array Show]
+##--------------------------------------------------------------------
+(ps-view
+  (def LM 72)
+  (def Tempstr (stringy 30))
+  (set-font #"Helvetica" 12)
+  (def crlf {(sub (currentpoint) 13)
+             (exch) (popy) (LM) (exch) (moveto)})
+  (def aryshow {(def ary (exch))
+                (fory 0 1 (sub (lengthy (ary)) 1)
+                      (gety (ary) (exch))
+                      (show (cvs (Tempstr)))
+                      (crlf))})
+  (moveto (LM) 600)
+  (aryshow ([ "mouse" 27 'aName '(6 12) {(crlf)} (LM)
+              (findfont #"Helvetica") ]))
+  (showpage))
+
+
+##--------------------------------------------------------------------
+*** Example 8.2, p.82 [Format]
+##--------------------------------------------------------------------
+(ps-view
+  (def LM 72)
+  (def RM 216)
+  (def ypos 720)
+  (def lineheight 11)
+  (def crlf {(def ypos (sub (ypos) (lineheight)))
+             (moveto (LM) (ypos))})
+  (def prtstr {(ify (gt (add (popy (stringwidth (dup)))
+                             (popy (currentpoint)))
+                        (RM))
+                    (crlf))
+               (show)})
+  (def formaty {(forall nil        # forall nil procs => {procs} forall
+                        (prtstr)
+                        (show " "))})
+  (set-font #"Times-Italic" 10)
+  (moveto (LM) (ypos))
+  (formaty ([ "Concience" "is" "the" "inner" "voice" "that" "warns"
+              "us" "somebody" "may" "be" "looking" " - Mencken" ]))
+  (showpage))
+
+
+##--------------------------------------------------------------------
+*** Example 8.3, p.84 [Five Boxing Wizards]
+##--------------------------------------------------------------------
+(ps-view
+  (def LM 72)
+  (def newline {(sub (currentpoint) 10)
+                (exch) (popy) (LM) (exch)
+                (moveto)})
+  (def PrintSample {(aload) (popy)
+                    (setfont (findfont) (scalefont 8))
+                    (show) (newline)})
+  (def FontList ([ ([ "The five boxing wizards jump quickly."
+                      #"Helvetica" ])
+                   ([ "The five boxing wizards jump quickly."
+                      #"Times-Roman" ])
+                   ([ "The five boxing wizards jump quickly."
+                      #"Symbol" ]) ]))
+  (moveto (LM) 600)
+  (forall FontList (PrintSample))
+  (showpage))
+
+
+##====================================================================
+** Ch.9 More Font
+##====================================================================
+
+##--------------------------------------------------------------------
+*** Example 9.1, p.89 [Binky Inc.]
+##--------------------------------------------------------------------
+PostScript style
+(ps-view
+  (def TM 780) (def BM -12) (def LM 0) (def RM 612)
+  (def newline {(sub 13 (currentpoint))
+                (exch) (popy) (LM)
+                (exch) (moveto)})
+  (def nllfNec {(ify (gt (popy (currentpoint)) (RM))
+                     (newline))})
+  (def done? {(currentpoint)
+              (exch)
+              (popy) 
+              (lt (BM))})
+  (def fillpage {(def strg (exch))
+                 (loopy {(popy) (popy) (nllfNec)}
+                        (kshow (strg))
+                        (ify (done?) (exit)))})
+    (set-font #"Times-Bold" 10)
+    (moveto (LM) (TM))
+    (setgray .5)
+    (fillpage "Binky Inc.")
+    (set-font #"Times-Roman" 30)
+    (moveto (div (sub (sub (RM) (LM))
+                      (popy (stringwidth "Binky Inc.")))
+                 2)
+            400)
+    (setgray 0)
+    (show "Binky Inc.")
+    (showpage))
+
+
+##---------------------------------
+## lisp-like style
+## (ps-view
+##   (let ((top-margin 780) (bottom-margin -12)
+##         (left-margin 0)  (right-margin 612))
+##     (set-font #"Times-Bold" 10)
+##     (moveto left-margin top-margin)
+##     (setgray .5)
+
+
+
+##     (set-font #"Times-Roman" 30)
+##     (moveto (/ (- (string-width "Binky Inc.")
+##                   (- right-margin left-margin))
+##                2)
+##             400)
+##     (setgray 0)
+##     (show "Binky Inc.")
+##     (showpage)))
+
+
+
+##--------------------------------------------------------------------
+*** Example 9.2, p.92 [Char Encoding]
+##--------------------------------------------------------------------
+PostScript style
+(ps-view
+  (set-font #"Times-Roman" 10)
+  (def chary (stringy 1))
+  (def nstr  (stringy 3))
+  (def LM 72)                           #!? before def not!!
+  (def newline {(currentpoint)
+                (sub 11)
+                (exch) (popy) (LM)      #!? before def not!!
+                (exch) (moveto)})
+  (def prt-n {(show (cvs (nstr)))})
+  (def prtchar {(chary)
+                (roll 0 3 -1) (put)
+                (chary) (show)})
+  (def PrintCodeandChar {(dup) (prt-n) (show " ")
+                         (prtchar) (newline)})
+  (moveto (LM) 600)
+  (fory 161 1 208 (PrintCodeandChar))
+  (def LM 144)
+  (moveto (LM) 600)
+  (fory 225 1 251 (PrintCodeandChar))
+  (showpage))
+
+
+##---------------------------------
+## lisp-like style
+
+
+
+
+##--------------------------------------------------------------------
+*** Example 9.3, p.95 [Lewis Carrol]
+##--------------------------------------------------------------------
+PostScript style
+(ps-view
+  (def basefont (findfont #"Times-Roman"))
+  (def LM 72)
+  (def newline {(currentpoint) (sub 13)
+                (exch) (popy) (LM)
+                (exch) (moveto)})
+  (moveto (LM) 600)
+  (setfont (makefont (basefont) '(12 0 0 12 0 0)))
+  (show "\"Talking of axes,\"")   (newline)
+  (setfont (makefont (basefont) '(17 0 0 12 0 0)))
+  (show "said the Duchess,")      (newline)
+  (setfont (makefont (basefont) '(7 0 0 12 0 0)))
+  (show "\"Off with her head!\"") (newline)
+  (setfont (makefont (basefont) '(12 0 6.93 12 0 0)))
+  (show "        - Lewis Carrol")
+  (showpage))
+
+
+##--------------------------------------------------------------------
+*** Example 9.4, p.98 [Adobe Systems]
+##--------------------------------------------------------------------
+PostScript style
+(ps-view
+  (set-font #"Helvetica-BoldOblique" 30)
+  (def oshow {(stroke (charpath 'true))})
+  (def circleofAdobe {(fory 15 15 345
+                            (local-gstate
+                              (rotate) (moveto 0 0)
+                              (oshow "Adobe")))})
+  (translate 250 400)
+  (setlinewidth .5)
+  (circleofAdobe)
+  (moveto 0 0)
+  (charpath "Adobe Systems" 'true)
+  (local-gstate (fill-gray 1))
+  (stroke)
+  (showpage))
+
+## cl-ps style
+(ps-view
+  (set-font #"Helvetica-BoldOblique" 30)
+  (def-proc circle-string (str) ()
+    (fory 15 15 345
+          (local-gstate
+            (rotate) (moveto 0 0)
+            (stroke (charpath str 'true)))))
+  (translate 250 400)
+  (setlinewidth .5)
+  (circle-string "Adobe")
+  (moveto 0 0)
+  (charpath "Adobe Systems" 'true)
+  (local-gstate (fill-gray 1))
+  (stroke)
+  (showpage))
+
+
+
+##---------------------------------
+## lisp-like style
+(defun outline-show (string)
+  (stroke (charpath string t)))
+ 
+(defun inline-show (string)
+  (stroke (charpath string nil)))
+
+(defun circle-string (string)
+  (do ((i 15 (+ i 15)))
+      ((< 345 i))
+    (local-gstate
+      (rotate i)
+      (moveto 0 0)
+      (outline-show string))))
+
+(ps-view
+  (set-font #"Helvetica-BoldOblique" 30)
+  (translate 250 400)
+  (setlinewidth .5)
+  (circle-string "Adobe")
+  (moveto 0 0)
+  (charpath "Adobe Systems" t)
+  (local-gstate (fill-gray 1))
+  (stroke)
+  (showpage))
+
+##---------------------------------
+## more lisp
+(defun 16bit-color (r g b)
+  (setrgbcolor (/ r 255.0) (/ g 255.0) (/ b 255.0)))
+
+(ps-view
+  (set-font #"Helvetica-BoldOblique" 30)
+  (translate 250 400)
+  (setlinewidth .5)
+  (circle-string "Lisp")
+  (moveto 0 0)
+  (charpath "Lisp Systems" t)
+  (local-gstate (filly (16bit-color 0 104 139))) # DeepSkyBlue4
+  (show-string "\"Made with secret alian tecnology\""
+               (string-width "Lis") (* -1 (string-width "Lisp")) # !!!
+               #"Helvetica-Oblique" 15)
+  (stroke)
+  (showpage))
+
+
+##====================================================================
+** Ch.10 Clipping and Line Details
+##====================================================================
+##--------------------------------------------------------------------
+*** Example 10.1, p.101-2, [Triangle Grid]
+##--------------------------------------------------------------------
+(defun mlines (points)
+  (let ((first-point (1st points)))
+    (moveto (1st first-point) (2nd first-point)))
+  (lines (rest points)))
+
+(ps-view
+  (def 3anglepath {(newpath)
+                   (mlines '((0 0) (144 0) (72 200)))
+                   (closepath)})
+  (def verticals {(newpath)
+                  (fory 0 9 144
+                        (moveto 0) (rlineto 0 216))
+                  (stroke)})
+  (def horizontals {(newpath)
+                    (fory 0 10 200
+                          (moveto (exch 0))
+                          (rlineto 144 0))
+                    (stroke)})
+  (translate 230 300)
+  (clip (3anglepath))
+  (verticals)
+  (horizontals)
+  (showpage))
+
+
+##--------------------------------------------------------------------
+*** Example 10.2, p.103, [Star Lines]
+##--------------------------------------------------------------------
+PostScript style
+(ps-view
+  (set-font #"Times-BoldItalic" 27)
+  (def rays
+    (fory 0 1.5 179
+          (local-gstate
+            (rotate)
+            (stroke (mlines '((0 0) (108 0)))))))
+  (translate 300 400)
+  (setlinewidth .25)
+  (newpath)
+  (moveto 0 0)
+  (clip (char-path "StarLines" t))
+  (newpath)
+  (translate 54 -15)
+  (rays)
+  (showpage))
+
+
+##--------------------------------------------------------------------
+*** Example 10.3, p.107-8 [Vertical Jump Lines]
+##--------------------------------------------------------------------
+## !!!!!
+(ps-view
+  (def ypos 130)
+  (set-font #"Times-Roman" 6)
+  (def prt-n {(show (cvs " "))})        # !?!?!?
+  (def borders {(mrlines '((-2.5 0) (0 135)))
+                (mrlines '((102.5 0) (0 135)))
+                (stroke)})
+  (def newline {(def ypos (sub (ypos) 15))})
+  (def doLine {(moveto (ypos 0))
+               (rlineto 100 0)
+               (stroke)
+               (moveto (add (ypos 5) 2))
+               (prt-n (ypos))
+               (newline)})
+  (translate 250 350)
+  (setlinewidth 5)
+  (borders)
+  (setlinewidth .5)
+  (doLine (setdash ([ ]) 0))
+  (doLine (setdash '(4 2) 0))
+  (doLine (setdash '(2 4) 0))
+  (doLine (setdash '(6 4 2 4) 0))
+  (doLine (setdash '(4 4) 0))
+  (doLine (setdash '(4 4) 1))
+  (doLine (setdash '(4 4) 2))
+  (doLine (setdash '(4 4) 3))
+  (doLine (setdash '(4 4) 4))
+  (showpage))
+
+          
+
+
+
+##---------------------------------
+## lisp-like style
+### (Less efficiency, but more readable & reusable & flexible.)
+
+
+
+
+
+
+
+
+##====================================================================
+** Ch.11 Images
+##====================================================================
+##--------------------------------------------------------------------
+*** Example 11.1, p.114 [Bits/Samples]
+##--------------------------------------------------------------------
+PostScript style
+(ps-view
+  (translate 72 500)
+  (scale 72 72)
+  (image 8 8 1 '(8 0 0 8 0 0) #Xc936)
+  (translate 0 -1.25)
+  (image 8 8 2 '(8 0 0 8 0 0) #Xc936)
+  (translate 0 -1.25)
+  (image 8 8 4 '(8 0 0 8 0 0) #Xc936)
+  (translate 0 -1.25)
+  (image 8 8 8 '(8 0 0 8 0 0) #Xc936)
+  (showpage))
+
+
+##--------------------------------------------------------------------
+*** Example 11.2, p.115 [Helicopter]
+##--------------------------------------------------------------------
+PostScript style
+(ps-view
+  (translate 300 400)
+  (gsave)
+  (scale 72 72)
+  (image 16 6 1 '(16 0 0 6 0 0) #Xddff00ff541f8003fbf9001e)
+  (grestore)
+  (translate 0 -40)
+  (scale 72 27)
+  (image 16 6 1 '(16 0 0 6 0 0) #Xddff00ff541f8003fbf9001e)
+  (showpage))
+
+
+
+##====================================================================
+** Basic Graphic
+##====================================================================
+##--------------------------------------------------------------------
+*** Program 1, p.128-9 [Repeated Shapes]
+##--------------------------------------------------------------------
+PostScript style
+#(def-ps-op2s translate arc)
+
+(ps-view
+  (def inch {(mul 72)})
+  (def wedge {(newpath)
+              (moveto 0 0)
+              (translate 1 0)
+              (rotate 15)
+              (translate (siny 0 15))    #(translate 0 (siny 15))
+              (arc (siny 0 0 15) -90 90) #(arc 0 0 (siny 15) -90 90)
+              (closepath)})
+  (local-gstate
+    (translate (inch 3.75) (inch 7.25))
+    (scale (inch 1) (inch 1))
+    (wedge)
+    (stroke (setlinewidth 0.02)))
+  (local-gstate
+    (translate (inch 4.25) (inch 4.25))
+    (scale (inch 1.75) (inch 1.75))
+    (setlinewidth 0.02)
+    (fory 1 1 12
+          (setgray (div 12))
+          (local-gstate
+            (wedge)
+            (local-gstate (filly))
+            (stroke (setgray 0)))
+          (rotate 30)))
+  (showpage))
+
+
+##---------------------------------
+## lisp-like style
+### (Less efficiency, but more readable & reusable & flexible.)
+(defmacro local-gstate (&body body)
+  `(progn (gsave)
+          ,@body
+          (grestore)))
+
+(defun deg->rad (degree) (* (/ pi 180) degree))
+
+(defun inch (n) (* 72 n))
+
+(def-ps-op1s translate arc)
+
+(ps-view
+  (def wedge {(newpath)
+              (moveto 0 0)
+              (translate 1 0)
+              (rotate 15)
+              (translate 0 (sin (deg->rad 15)))
+              (arc 0 0 (sin (deg->rad 15)) -90 90) # double F
+              (closepath)})
+  (local-gstate
+    (translate (inch 3.75) (inch 7.25))
+    (scale (inch 1) (inch 1))
+    (wedge)
+    (stroke (setlinewidth 0.02)))
+  (local-gstate
+    (translate (inch 4.25) (inch 4.25))
+    (scale (inch 1.75) (inch 1.75))
+    (setlinewidth 0.02)
+    (fory 1 1 12
+          (setgray (div 12))
+          (local-gstate
+            (wedge)
+            (local-gstate (filly))
+            (stroke (setgray 0)))
+          (rotate 30)))
+  (showpage))
+
+
+##--------------------------------------------------------------------
+*** Program 2, p.130-1 [Expanded and Constant Width Lines]
+##--------------------------------------------------------------------
+PostScript style
+(ps-view
+  (def inch {(mul 72)})
+  (def centersquare {(newpath)
+                     (mlines '((.5 .5) (-.5 .5) (-.5 -.5) (.5 -.5)))
+                     (closepath)})
+  (local-gstate
+    (translate (inch 2.5) (inch 6))
+    (setlinewidth (div 1 16))
+    (fory 1 1 5
+          (local-gstate
+            (scale (dup (inch (mul .5))))
+            (centersquare)
+            (stroke))))
+  (local-gstate
+    (translate (inch 6) (inch 6))
+    (setlinewidth 1)
+    (def cmtx (matrix) (currentmatrix))
+    (fory 1 1 5
+          (local-gstate
+            (scale (dup (inch (mul .5))))
+             (centersquare)
+             (setmatrix (cmtx))
+             (stroke))))
+  (showpage))
+
+
+##---------------------------------
+## lisp-like style
+### (Less efficiency, but more readable & reusable & flexible.)
+(ps-view
+  (def centersquare {(newpath)
+                     (mlines '((.5 .5) (-.5 .5) (-.5 -.5) (.5 -.5)))
+                     (closepath)})
+  (local-gstate
+    (translate (inch 2.5) (inch 6))
+    (setlinewidth (/ 1.0 16))
+    (fory (inch 1) (inch 1) (inch 5)
+          (local-gstate
+            (scale (dup (mul .5)))
+            (centersquare)
+            (stroke))))
+  (local-gstate
+    (translate (inch 6) (inch 6))
+    (setlinewidth 1)
+    (def cmtx (matrix) (currentmatrix))
+    (fory (inch 1) (inch 1) (inch 5)
+          (local-gstate
+            (scale (dup (mul .5)))
+             (centersquare)
+             (setmatrix (cmtx))
+             (stroke))))
+  (showpage))
+
+
+## /agaga matrix currentmatrix def
+## /agaga {matrix currentmatrix} def
+
+
+(ps-view
+  (def centersquare
+    (newpath)
+    (mlines '((.5 .5) (-.5 .5) (-.5 -.5) (.5 -.5)))
+    (closepath))
+  (local-gstate
+    (translate (inch 2.5) (inch 6))
+    (setlinewidth (/ 1.0 16))
+    (fory (inch 1) (inch 1) (inch 5)
+          (local-gstate
+            (scale (dup (mul .5)))
+            (centersquare)
+            (stroke))))
+  (local-gstate
+    (translate (inch 6) (inch 6))
+    (setlinewidth 1)
+    (fory (inch 1) (inch 1) (inch 5)
+          (local-gstate
+            (scale (dup (mul .5)))
+             (centersquare)
+             (setmatrix (currentmatrix (matrix)))
+             (stroke))))
+  (showpage))
+
+
+##--------------------------------------------------------------------
+*** Program 3, p.132-5 [Elliptical Arcs]
+##--------------------------------------------------------------------
+PostScript style
+(show-ps
+  (def ellipsedict (dict 8))
+  (put (ellipsedict) 'mtrx (matrix))    # !!! mtrx put +def
+  (def ellipse {(begin (ellipsedict))
+                  (def end-ang (exch))
+                  (def start-ang (exch))
+                  (def yrad (exch))
+                  (def xrad (exch))
+                  (def y (exch))
+                  (def x (exch))
+                  (def savematrix (mtrx) (currentmatrix)) # !!! put
+                  (translate (x) (y))
+                  (scale (xrad) (yrad))
+                  (arc 0 0 1 (start-ang) (end-ang))
+                  (setmatrix (savematrix))
+                (end)})
+  (newpath) (stroke (ellipse 144 400  72 144   0 360))
+  (newpath) (filly  (ellipse 400 400 144  36   0 360))
+  (newpath) (stroke (ellipse 300 180 144  72  30 150))
+  (newpath) (filly  (ellipse 480 150  30  50 270  90))
+  (showpage))
+
+
+(ps-view
+  (def ellipsedict (dict 8))
+  (begin (ellipsedict))
+    (def mtrx (matrix))
+  (end)
+  (def ellipse {(begin (ellipsedict))
+                  (def end-ang (exch))
+                  (def start-ang (exch))
+                  (def yrad (exch))
+                  (def xrad (exch))
+                  (def y (exch))
+                  (def x (exch))
+                  (def savematrix (currentmatrix (mtrx)))
+                  (translate (x) (y))
+                  (scale (xrad) (yrad))
+                  (arc 0 0 1 (start-ang) (end-ang))
+                  (setmatrix (savematrix))
+                (end)})
+  (newpath) (stroke (ellipse 144 400  72 144   0 360))
+  (newpath) (filly  (ellipse 400 400 144  36   0 360))
+  (newpath) (stroke (ellipse 300 180 144  72  30 150))
+  (newpath) (filly  (ellipse 480 150  30  50 270  90))
+  (showpage))
+
+
+##---------------------------------
+## lisp-like style
+(defmacro local-dict (dict-name &body body)
+  (if (numberp (car body))
+      `(progn (def ,dict-name (dict ,(car body)))
+              (begin (,dict-name))
+              ,@(cdr body)
+              (end))
+      `(progn (begin (,dict-name))
+              ,@body
+              (end))))
+
+### mi
+(defmacro local-matrix (matrix-name &body body)
+  (let ((save-matrix (symb 'save- matrix-name)))
+    `(progn (def ,matrix-name (matrix))
+            (def ,save-matrix
+              (currentmatrix (,matrix-name)))
+            ,@body
+            (setmatrix (,save-matrix)))))
+
+(defmacro def-proc (name (&rest args) &body body)
+  (let ((dict-name (symb name '-dict))
+        (matrix-name (symb name '-matrix))
+        (save-matrix (symb name '-save)))
+    `(progn
+       (local-dict ,dict-name ,(+ 2 (length args))
+         (def ,matrix-name (matrix)))
+       (def ,name {
+         (local-dict ,dict-name
+           ,@(mapcar #'(^ (arg) `(def ,arg (exch)))
+                     (reverse args))
+           (def ,save-matrix (currentmatrix (,matrix-name)))
+           ,@(tree-map #'(^ (elt) (if (member elt args)
+                                      `(,elt)
+                                      elt))
+                       body)
+           (setmatrix (,save-matrix)))}))))
+
+
+## (local-matrix tmp
+##   (translate 30 40))
+
+(defun tree-map (fn tree)
+  (mapcar #'(^ (x) (if (consp x)
+                       (tree-map fn x)
+                       (funcall  fn x)))
+          tree))
+
+(defmacro def-proc (name (&rest args) &body body)
+  (let ((dict-name (symb name '-dict)))
+    `(progn
+       (local-dict ,dict-name ,(+ 2 (length args))
+         (def mtrx (matrix)))
+       (def ,name {
+         (local-dict ,dict-name
+           ,@(mapcar #'(^ (arg) `(def ,arg (exch)))
+                     (reverse args))
+           (def save-matrix (currentmatrix (mtrx)))
+           ,@(tree-map #'(^ (elt) (if (member elt args)
+                                      `(,elt)
+                                      elt))
+                       body)
+           (setmatrix (save-matrix)))}))))
+
+(def-ps-op2 arc)
+(ps-view
+  (def-proc ellipse (x y xrad yrad start-ang end-ang)
+    (translate x y)
+    (scale xrad yrad)
+    (arc 0 0 1 start-ang end-ang))
+  (newpath) (stroke (ellipse 144 400  72 144   0 360))
+  (newpath) (filly  (ellipse 400 400 144  36   0 360))
+  (newpath) (stroke (ellipse 300 180 144  72  30 150))
+  (newpath) (filly  (ellipse 480 150  30  50 270  90))
+  (showpage))
+
+##---------------------------------
+## lisp-like style
+(defun ellipse (x y xrad yrad start-ang end-ang)
+  (local-?
+    (translate x y)
+    (scale xrad yrad)
+    (arc 0 0 1 start-ang end-ang)))
+
+(ps-view
+  (newpath) (stroke (ellipse 144 400  72 144   0 360))
+  (newpath) (filly  (ellipse 400 400 144  36   0 360))
+  (newpath) (stroke (ellipse 300 180 144  72  30 150))
+  (newpath) (filly  (ellipse 480 150  30  50 270  90))
+  (showpage))
+
+
+
+##--------------------------------------------------------------------
+*** Program 4, p.136-9 [Drawing Arrow]
+##--------------------------------------------------------------------
+
+(def-ps-op2s moveto lineto)
+(show-ps
+  (local-dict arrow-dict 14
+    (def mtrx (matrix)))
+  (def arrow {
+    (local-dict arrow-dict
+      (def head-length (exch))
+      (def half-head-thickness (exch) (div 2))
+      (def half-thickness (exch) (div 2))
+      (def tipy (exch)) (def tipx (exch))
+      (def taily (exch)) (def tailx (exch))
+      (def dx (sub (tipx) (tailx)))     #
+      (def dy (sub (tipy) (taily)))     #
+      (def arrow-length
+        (mul (dx) (dx)) (mul (dy) (dy)) (add) (sqrty)) #
+      (def angle (atany (dy) (dx)))                    #
+      (def base (sub (arrow-length) (head-length)))    #
+      (def save-matrix (currentmatrix (mtrx)))
+      (translate (tailx) (taily))
+      (rotate (angle))
+      (moveto 0 (neg (half-thickness)))
+      (lineto (base) (neg (half-thickness)))
+      (lineto (base) (neg (half-head-thickness)))
+      (lineto (arrow-length) 0)
+      (lineto (base) (half-head-thickness))
+      (lineto (base) (half-thickness))
+      (lineto 0 (half-thickness))
+      (closepath)
+      (setmatrix (save-matrix)))})
+  (newpath)
+  (arrow 318 340 72 340 10 30 72)
+  (filly)
+  (newpath)
+  (arrow 382 400 542 560 72 232 116)
+  (stroke (setlinewidth 3))
+  (newpath)
+  (def-ps-op2 arrow)                    #
+  (arrow 400 300 400 90 90 200 200 (div 2 (mul (sqrt 3))))
+  (fill-gray .65)
+  (showpage))
+
+###--------------------------------
+### lisp-like style
+(defun arrow (tail-x tail-y tip-x tip-y
+              thickness head-thickness head-length)
+  (let* ((half-thickness      (/ thickness 2))
+         (half-head-thickness (/ head-thickness 2))
+         (dx (- tip-x tail-x))
+         (dy (- tip-y tail-y))
+         (arrow-length (sqrt (+ (* dx dx) (* dy dy))))
+         (base (- arrow-length head-length))
+         (angle (atan dy dx)))
+    (local-gstate                       #!!! not save path
+      (translate tail-x tail y)
+      (rotate angle)
+      (moveto 0    (* -1 half-thickness))
+      (lineto base (* -1 half-thickness))
+      (lineto base (* -1 half-head-thickness))
+      (lineto arrow-length 0)
+      (lineto base half-head-thickness)
+      (lineto base half-thickness)
+      (lineto 0    half-thickness)
+      (closepath))))
+
+(ps-view
+  (newpath)
+  (arrow 318 340 72 340 10 30 72)
+  (filly)
+  (newpath)
+  (arrow 382 400 542 560 72 232 116)
+  (stroke (setlinewidth 3))
+  (newpath)
+  (arrow 400 300 400 90 90 200 200 (div 2 (mul (sqrt 3))))
+  (fill-gray .65)
+  (showpage))
+      
+
+
+
+
+##--------------------------------------------------------------------
+*** Program 5, p.140-3 [Centered Dash Patterns]
+##--------------------------------------------------------------------
+
+
+##--------------------------------------------------------------------
+*** Program 6, p.144-7 [Printing Images]
+##--------------------------------------------------------------------
+
+(ps-view
+  (def concatprocs {
+    (def proc2 (exch) (cvlit))
+    (def proc1 (exch) (cvlit))
+    (def newproc
+      (add (lengthy (proc1)) (lengthy (proc2)))
+      (arrayy))
+    (putinterval (newproc) (proc1 0))
+    (putinterval (newproc) (lengthy (proc1)) (proc2))
+    (cvx (newproc))})
+  (def inch {(mul 72)})
+  (def picstr (stringy 3))
+  (def imageturkey {(image 24 23 1 '(24 0 0 -23 0 23)
+                           {(currentfile) (picstr)
+                            (readhexstring) (popy)})})
+  (local-gstate
+    (translate (inch 3) (inch 4))
+    (scale (dup (inch 2)))
+    (concatprocs {1 (exch) (sub)} (currenttransfer))
+    (settransfer)
+    (imageturkey)
+    (fout " 00~X" #X003B000027000024800E494011492014B2203CB65075FE8817FF8C175F141C07E23803C4703182F8EDFCB2BBC2BB6F8431BFC218EA3C0E3E0007FC0003F8001E18001FF800))
+  (showpage))
+
+##====================================================================
+## 
+##====================================================================
+
+##--------------------------------------------------------------------
+*** Program 7, p.153 [Printing with Small Caps]
+##--------------------------------------------------------------------
+
+(show-ps
+ (def scdict (dict 3))
+ (local-dict scdict
+   (def findscscale {(local-gstate
+                       (newpath)
+                       (moveto 0 0)
+                       (charpath "X" t)
+                       (flattenpath)
+                       (pathbbox) (def capheight (exch))
+                       (popy) (popy) (popy)
+                       (newpath)
+                       (moveto 0 0)
+                       (charpath "X" t)
+                       (flattenpath)
+                       (pathbbox) (def xheight (exch))
+                       (popy) (popy) (popy))
+                     (div (add (xheight)
+                               (div (sub (capheight) (xheight))
+                                    3))
+                          (capheight))}))
+ (def scshow {(local-dict scdict
+                (local-gstate
+                  (setfont
+                   (makefont (currentfont)
+                             '(.9 0 0 (findscale) 0 0))) # (findscale)
+                  (show)
+                  (currentpoint))
+                (moveto))})
+ (set-font #"Times-Roman" 18)
+ (moveto 72 500)
+ (show "To read means to obtain meaning from")
+ (show " words, and")
+ #(moveto 72 (sub 500 20))               # !!!
+ (moveto (sub 72 500 20))               # !!!
+ (show "legibility is")
+ (scshow "THAT QUALITY WHICH")
+ (show "enebles words")
+ #(moveto 72 (sub 500 (mul 20 2)))       # !!!
+ (moveto (sub (mul 72 500 20 2)))       # !!!
+ (show "to be read easily, quickly, and accurately.")
+ #(moveto 72 (sub 500 70))               # !!!
+ (moveto (sub 72 500 70))               # !!!
+ (scshow "JOHN C. TARR")
+ (showpage))
+
+
+
+
+
+##--------------------------------------------------------------------
+*** Program 8, p.156-9 [Setting Fraction]
+##--------------------------------------------------------------------
+(ps-view
+  (def fractiondict (dict 5))
+  (def fractionshow {(local-dict fractiondict
+                       (def denominatory (exch))
+                       (def numeratory (exch))
+                       (def regularfont (currentfont))
+                       (def fractionfont
+                         (makefont (currentfont) '(.65 0 0 .6 0 0)))
+                       (local-gstate
+                         (newpath)
+                         (moveto 0 0)
+                         (charpath "1" t)
+                         (flattenpath) (pathbbox)
+                         (def height (exch))
+                         (popy) (popy) (popy))
+                       #(rmoveto 0 (mul .4 (height))) # !!!
+                       (rmoveto (mul (height 0 .4))) # !!!
+                       (setfont (fractionfont))
+                       (show (numeratory))
+                       #(rmoveto 0 (neg (mul .4 (height)))) # !!!
+                       (rmoveto (neg (mul (height 0 .4)))) # !!!
+                       (setfont (regularfont))
+                       (show "\\244")
+                       (setfont (fractionfont))
+                       (show (denominatory))
+                       (setfont (regularfont)))})
+  (set-font #"Times-Roman" 300)
+  (moveto 100 72)
+  (fractionshow "7" "8")
+  (set-font #"Times-Roman" 18)
+  (moveto 72 550)
+  (show "Slowly stir in 5")
+  (fractionshow "1" "2")
+  (show "lbs. of chocolate and then blend on high.")
+  (set-font #"Times-Roman" 40)
+  (moveto 420 650)
+  (fractionshow "13" "22")
+  (moveto 100 450)
+  (fractionshow "3" "4")
+  (showpage))
+
+(defmacro 2popy (&rest args)
+  `(popy (popy ,@args)))
+
+(defmacro 3popy (&rest args)
+  `(popy (popy (popy ,@args))))
+
+###
+(show-ps
+  (def-proc fract-show (denom numer) (fract-dict 5)
+    (lety ((regular-font (currentfont))
+           (fract-font (makefont (currentfont)
+                                 '(.65 0 0 .6 0 0))))
+      (local-gstate
+        (newpath)
+        (moveto 0 0)
+        (charpath "1" t)
+        (flattenpath)
+        (pathbbox) (def height (exch)) (3popy))
+
+## (3popy (def height (exch)) (pathbbox))))
+## (def height (exch))
+## (3popy))
+
+## (pathbbox)
+## (lety ((height (exch)))
+##   (3popy height (pathbbox)))
+
+      (rmoveto (mul (height 0 .4))) # !!!
+      (setfont fract-font)
+      (show numer)
+      (rmoveto (neg (mul (height 0 .4)))) # !!!
+      (setfont regular-font)
+      (show "\\244")
+      (setfont fract-font)
+      (show denom)
+      (setfont regular-font)))
+  (set-font #"Times-Roman" 300)
+  (moveto 100 72)
+  (fract-show "7" "8")
+  (set-font #"Times-Roman" 18)
+  (moveto 72 550)
+  (show "Slowly stir in 5")
+  (fract-show "1" "2")
+  (show "lbs. of chocolate and then blend on high.")
+  (set-font #"Times-Roman" 40)
+  (moveto 420 650)
+  (fract-show "13" "22")
+  (moveto 100 450)
+  (fract-show "3" "4")
+  (showpage))
+
+
+##--------------------------------------------------------------------
+*** Program 9, p.160-5 [Vertical Text]
+##--------------------------------------------------------------------
+(ps-view
+  (def vshowdict (dict 4))
+  (def vshow {(local-dict vshowdict
+                (def thestring (exch))
+                (def lineskip (exch))
+                (forall thestring
+                        (def charcode (exch))
+                        (def thechar
+                          " " (dup) (charcode 0) (put))
+                        (rmoveto (neg (lineskip 0)))
+                        (local-gstate
+                          (rmoveto
+                           (neg (div (popy (stringwidth (thechar)))
+                                     2))
+                           0)
+                          (show (thechar)))))})
+  (set-font #"Helvetica" 16)
+  (moveto 72 576)
+  (vshow 16 "TEXT POSITIONED VERTICALLY")
+  (moveto 122 576)
+  (vshow 16 "SHOUD BE CENTERED ON")
+  (moveto 172 576)
+  (vshow 16 "COMMON CENTER LINE.")
+  (moveto 222 576)
+  (vshow 16 "VERTICAL TEXT IN CAPITAL")
+  (moveto 272 576)
+  (vshow 16 "LETTERS HAS MORE EVEN")
+  (moveto 322 576)
+  (vshow 16 "spacing then lower case letters.")
+  (showpage))
+                            
+
+##--------------------------------------------------------------------
+*** Program 10, p.162-5 [Circular Text]
+##--------------------------------------------------------------------
+(show-ps
+  (def outsidecircletext {(local-dict circledict
+                            (def radius (exch)) (def centerangle (exch))
+                            (def ptsize (exch)) (def str (exch))
+                            (def xradious
+                              (add (radious)
+                                   (div (ptsize) 4)))
+                            (local-gstate
+                              (rotate
+                               (add (findhalfangle (centerangle) # !!!
+                                                   (str))))
+                              (forall str
+                                      (def charcode (exch))
+                                      (put (dup " ") 0 (charcode))
+                                      (outsideplacechar))))})
+  (def insidecircletext {(local-dict circledict
+                           (def radius (exch)) (def centerangle (exch))
+                           (def ptsize (exch)) (def str (exch))
+                           (def xradious
+                             (sub (radious)
+                                  (div (ptsize) 3)))
+                           (local-gstate
+                             (rotate
+                              (sub (findhalfangle (centerangle) # !!!
+                                                  (str))))
+                             (forall str
+                                     (def charcode (exch))
+                                     (put (dup " ") 0 (charcode))
+                                     (insideplacechar))))})
+  (local-dict circledict 16
+    (def findhalfangle {(mul (div (div (popy (stringwidth)) 2)
+                                  (mul (mul (xradious) 2) (piy))) # !!!
+                             360)})
+    (def outsideplacechar {(def chary (exdh))
+                           (def halfangle (findhalfangle (char)))
+                           (local-gstate
+                             (rotate (neg (halfangle)))
+                             (translate (radious) 0)
+                             (rotate -90)
+                             (moveto
+                              (neg (div (popy (stringwidth (chary))) 2))
+                              0)
+                             (show (chary)))
+                           (rotate (neg (mul (halfangle) 2)))})
+    (def insideplacechar {(def chary (exdh))
+                           (def halfangle (findhalfangle (char)))
+                           (local-gstate
+                             (rotate (halfangle))
+                             (translate (radious) 0)
+                             (rotate 90)
+                             (moveto
+                              (neg (div (popy (stringwidth (chary))) 2))
+                              0)
+                             (show (chary)))                           
+                           (rotate (mul (halfangle) 2))})
+    (def piy 3.1415923))
+  (set-font #"Times-Bold" 22)
+  (translate 306 448)
+  (outsidecircletext "Symphony No.9 (The Choral Symphony)"
+                     22 90 140)
+  (set-font #"Times-Roman" 15)
+  (outsidecircletext "Ludwig von Beethoven"
+                     15 90 118)
+  (insidecircletext "The New York Philharmonic Orchestra"
+                     15 270 118)
+  (showpage))
+
+
+###--------------------------------
+(let ((piy 3.1415923))
+(show-ps
+  (def-proc outside-circle-text (str pt-size center-angle radius)
+      (circle-dict)
+    (lety ((x-radius (add radius (div pt-size 4))))
+      (local-gstate
+        (rotate (add (find-half-angle str) center-angle))
+        (forall str
+                (def charcode (exch))
+                (put (dup " ") 0 (charcode))
+                (outside-place-char)))))
+
+  (def-proc inside-circle-text (str pt-size center-angle radius)
+      (circle-dict)
+    (lety ((x-radious (sub radius (div pt-size 3))))
+      (local-gstate
+        (rotate (sub (find-half-angle str) center-angle))
+        (forall str
+                (def charcode (exch))
+                (put (dup " ") 0 (charcode))
+                (inside-place-char)))))
+
+  (local-dict circle-dict 16
+
+    (def-proc find-half-angle (str x-radius) ()
+      (mul (div (div (x-value (stringwidth str)) 2)
+                (mul piy (mul x-radius 2)))
+           360))
+
+    (def-proc outside-place-char (chary) ()
+      (lety ((half-angle (find-half-angle (char))))
+        (local-gstate
+          (rotate (neg half-angle))
+           (translate radius 0)
+           (rotate -90)
+           (moveto (neg (div (popy (stringwidth chary)) 2))
+                   0)
+           (show chary))
+         (rotate (neg (mul half-angle 2)))))
+
+    (def-proc inside-place-char (chary) ()
+      (lety ((half-angle (find-half-angle char)))
+        (local-gstate
+          (rotate half-angle)
+          (translate (radious) 0)
+          (rotate 90)
+          (moveto (neg (div (popy (stringwidth chary)) 2))
+                  0)
+          (show chary))                   
+        (rotate (mul half-angle 2))))
+
+  (set-font #"Times-Bold" 22)
+  (translate 306 448)
+  (outside-circle-text "Symphony No.9 (The Choral Symphony)"
+                       22 90 140)
+  (set-font #"Times-Roman" 15)
+  (outside-circle-text "Ludwig von Beethoven"
+                       15 90 118)
+  (inside-circle-text "The New York Philharmonic Orchestra"
+                      15 270 118)
+  (showpage))
+
+
+##--------------------------------------------------------------------
+*** Program 11, p.166-9
+##--------------------------------------------------------------------
+
+
+
+
+
+##====================================================================
+** Applications
+##====================================================================
+##--------------------------------------------------------------------
+*** Program 12, p.174-7 [A Simple Line Breaking Algorithm]
+##--------------------------------------------------------------------
+
+#(make-ps "tst.ps"
+### !!!!
+(show-ps
+  (def wordbreak " ")        # !?!?!?
+  (def2 BreaklntoLines {
+    (def proc (exch))
+    (def linewidth (exch))
+    (def textstring (exch))
+    (def breakwidth
+      (popy (stringwidth (wordbreak))))
+    (def curwidth 0)
+    (def lastwordbreak 0)
+    (def startchar 0)
+    (def restoftext (textstring))
+    (loopy
+       (ifelse (searchy (restoftext) (wordbreak))
+               ((def nextword (exch)) (popy)
+                (def restoftext (exch))
+                (def wordwidth
+                  (popy (stringwidth (nextword))))
+                (ifelse (gt (add (curwidth) (wordwidth))
+                            (linewidth))
+                        ((proc (getinterval (textstring)
+                                            (startchar)
+                                            (sub (lastwordbreak)
+                                                 (startchar))))
+                         (def startchar (lastwordbreak))
+                         (def curwidth (add (wordwidth)
+                                            (breakwidth))))
+                        ((def curwidth (add (add (curwidth)
+                                                 (wordwidth))
+                                            (breakwidth)))))
+                (def lastwordreak (add (add (lastwordbreak)
+                                            (lengthy (nextword)))
+                                       1)))
+               (exit (popy))))
+    (def lastchar (lengthy (textstring)))
+    (proc (getinterval (textstring)
+                       (startchar)
+                       (sub (lastchar) (startchar))))})
+  (set-font #"Times-Roman" 16)
+  (def yline 650)
+  (BreaklntoLines
+"In every period there have been better or worse\\
+types employed in better or worse ways. The\\
+better types employed in better ways have been\\
+used by the educated printer acquainted with\\
+standards and history, directed by taste and\\
+a sense of the fitness of things, and facing the\\
+industrial conditions and the needs of his time.\\
+Such men have made of printing an art. The\\
+poorer types and methods have been employed\\
+by printers ignorant of standards and caring\\
+alone for commercial success. To these, printing\\
+has been simply a trade. The typography of a\\
+nation has been good or bad as one or other of\\
+these classes had the supremacy. And to-day\\
+any intelligent printer can educate his taste, so\\
+to choose types for his work and so to use them,\\
+that he will help printing to be an art rather\\
+than a trade. \\261Daniel Berkeley Updike."
+   300
+   {(moveto (yline 72)) (show)          # !!!
+    (def yline (sub (yline) 18))})
+  (showpage))
+
+
+##--------------------------------------------------------------------
+*** Program 13, p.178-81 [Making a Poster]
+##--------------------------------------------------------------------
+### !!! turn!!!!!!!!!!!
+(ps-view
+  (def inch {(mul 72)})
+  (def left-margin (inch .5))
+  (def bottom-margin (inch .25))
+  (def page-width (inch 7.5))
+  (def page-height (inch 10))
+  (def print-poster
+    {(def rows (exch))
+     (def cols (exch))
+     (def big-pic-proc (exch))
+     (newpath)
+     (moveto (left-margin) (bottom-margin)) # !!!
+     (rlineto (page-height 0))              # !!!
+     (rlineto (page-width) 0)
+     (rlineto (neg (page-height 0))) # !!!
+     (closepath) (clip)
+     (translate (left-margin) (bottom-margin))
+     (fory 0 1 (sub (rows) 1)
+           (def row-count (exch))
+           (fory 0 1 (sub (cols) 1)
+                 (def col-count (exch))
+                 (local-gstate
+                   (translate
+                    (neg (mul (page-width) (col-count)))
+                    (neg (mul (page-height) (row-count))))
+                   (big-pic-proc)
+                   (local-gstate (showpage)))))})
+  (def sale-sign {(local-gstate
+                    (set-font #"Times-Roman" 500)
+                    (moveto (inch 2.5) (inch 11))
+                    (show "SALE")
+                    (set-font #"Times-Roman" 350)
+                    (moveto (inch 1.45) (inch 4))
+                    (setgray .5) (show "50%")
+                    (setgray  0) (show "OFF")
+                    (newpath)
+                    (moveto (inch .5) (inch 18))
+                    (lineto (inch 22) (inch 18))
+                    (lineto (inch 22) (inch  2))
+                    (lineto (inch .5) (inch  2))
+                    (closepath)
+                    (local-gstate
+                      (stroke (setlinewidth (inch .75))))
+                    (stroke (setlinewidth 10) (setgray 1)))})
+  (print-poster {(sale-sign)} 3 2))
+                    
+
+
+##--------------------------------------------------------------------
+(show-ps
+  (def inch {(mul 72)})
+  (lety ((left-margin (inch .5)) (bottom-margin (inch .25))
+         (page-width (inch 7.5)) (page-height (inch 10)))
+    (def-proc print-poster (rows cols big-pic-proc) ()
+      (newpath)
+      (closepath
+       (moveto left-margin bottom-margin)
+       (rlineto 0 page-height) # !!!
+       (rlineto 0 page-width) # !!!
+       (rlineto 0 (neg page-height))) # !!!
+      ## (closepath
+      ##  (mrlines `((,left-margin ,bottom-margin)
+      ##             (0 ,page-height)
+      ##             (0 ,page-width)
+      ##             (0 ,(neg page-height)))))
+      (clip)
+      (translate left-margin bottom-margin)
+      (doy ((row-count 0 (add row-count 1)))
+           ((<y (sub rows 1) row-count))
+        (doy ((col-count 0 (add col-count 1)))
+             ((<y (sub cols 1) col-count))
+          (local-gstate
+            (translate
+             (neg (mul page-width  col-count))
+             (neg (mul page-height row-count)))
+            big-pic-proc
+            (local-gstate (showpage))))))
+  (def sale-sign {(local-gstate
+                    (set-font #"Times-Roman" 500)
+                    (moveto (inch 2.5) (inch 11))
+                    (show "SALE")
+                    (set-font #"Times-Roman" 350)
+                    (moveto (inch 1.45) (inch 4))
+                    (setgray .5) (show "50%")
+                    (setgray  0) (show "OFF")
+                    (newpath)
+                    (moveto (inch .5) (inch 18))
+                    (lineto (inch 22) (inch 18))
+                    (lineto (inch 22) (inch  2))
+                    (lineto (inch .5) (inch  2))
+                    (closepath)
+                    (local-gstate
+                      (stroke (setlinewidth (inch .75))))
+                    (stroke (setlinewidth 10) (setgray 1)))})
+  (print-poster 2 3 {(sale-sign)})))
+                    
+
+
+## (defmacro mrlines (points)
+##   (let ((first-point (1st points)))
+##     `(moveto ,(1st first-point) ,(2nd first-point)))
+##   `(rlines ,(rest points)))
+
+##--------------------------------------------------------------------
+*** Program 14, p.182-5 [Drawing a Pie Chart]
+##--------------------------------------------------------------------
+
+### def2 2times???? draw-slice, draw-pie-chart
+(ps-view
+  (def pie-dict (dict 24))
+  (local-dict pie-dict
+    (def find-gray {(def i (exch)) (def n (exch))
+                    (ifelse (eqy (mody (i) 2) 0)
+                            (div (add (div (i) 2)
+                                      (roundy (div (n) 2)))
+                                 (n))
+                            (div (div (add (i) 1) 2)
+                                  (n)))}))
+  (def2 draw-pie-chart
+    {(local-dict pie-dict
+       (def radius (exch))
+       (def y-center (exch))
+       (def x-center (exch))
+       (def pie-ary (exch))
+       (def label-ps (exch))
+       (def title-ps (exch))
+       (def title (exch))
+       (local-gstate
+         (translate (x-center) (y-center))
+         (setfont (findfont #"Helvetica")
+                  (scalefont (title-ps)))
+         (moveto (neg
+                  (div (popy (stringwidth (title)))
+                       2))
+                 (sub (neg (radius))
+                      (mul (title-ps) 3)))
+         (show (title))
+         (setfont (findfont #"Helvetica")
+                  (scalefont (label-ps)))
+         (def num-slices (lengthy (pie-ary)))
+         (def slice-cnt 0)
+         (def cur-angle 0)
+         (forall pie-ary
+                 (def slice-ary (exch))
+                 (popy (aload (slice-ary)))
+                 (def percent (exch))
+                 (def label (exch))
+                 (def per-angle (mul (percent) 360))
+                 (def slice-cnt (add (slice-cnt) 1))
+                 (draw-slice
+                  (label)
+                  (cur-angle)
+                  (add (cur-angle) (per-angle))
+                  (find-gray (num-slices) (slice-cnt)))
+                 (def cur-angle (add (cur-angle)
+                                     (per-angle))))))})
+  (local-dict pie-dict
+    (def draw-slice
+      {(def gray-shade (exch))
+       (def end-angle (exch))
+       (def start-angle (exch))
+       (def the-label (exch))
+       (newpath) (moveto 0 0)
+       (arc (radius 0 0) (start-angle) (end-angle)) # !!!
+       (closepath)
+       (setmiterlimit 1.415)
+       (local-gstate
+         (fill-gray (gray-shade)))
+       (stroke)
+       (local-gstate
+         (rotate (div (add (start-angle) (end-angle)) 2))
+         (translate (radius) 0)
+         (newpath) (moveto 0 0) (lineto (mul (label-ps) .8) 0) (stroke)
+         (translate (label-ps) 0)
+         (transform 0 0))
+       (itransform)
+       (def y (exch)) (def x (exch))
+       (moveto (x) (y))
+       (ify (lt (x) 0)
+            (rmoveto (neg (popy (stringwidth (the-label)))) 0))
+       (ify (lt (y) 0)
+            (rmoveto (neg (label-ps 0)))) # !!!
+       (show (the-label))}))
+  (draw-pie-chart "January Pie Sales" 24 12
+                  ([ ([ "Blueberry"     .12 ])
+                     ([ "Cherry"        .30 ])
+                     ([ "Apple"         .26 ])
+                     ([ "Boston Cream"  .16 ])
+                     ([ "Other"         .04 ])
+                     ([ "Vanilla Cream" .12 ]) ])
+                  306 396 140)
+  (showpage))
+
+
+##--------------------------------------------------------------------
+*** Program 15, p.186-91 [Filling an Area with a Pattern]
+##--------------------------------------------------------------------
+
+(show-ps
+  (def set-usr-screen-dict (dict 22))
+  (local-dict set-usr-screen-dict
+    (def tmp-pictm (matrix))
+    (def tmp-prot (matrix))
+    (def tmp-scale (matrix))
+    (def concate-procs
+      {(def proc2 (cvlit (exch)))
+       (def proc1 (cvlit (exch)))
+       (def new-proc (arrayy (add (lengthy (proc1))
+                                  (lengthy (proc2)))))
+       (putinterval (new-proc) 0 (proc1))
+       (putinterval (new-proc) (lengthy (proc1)) (proc2))
+       (cvx (new-proc))})
+    (def res-matrix (matrix))
+    (def find-resolution
+      {72 0 (res-matrix) (defaultmatrix) (dtransform)
+       (def yres (exch))
+       (def xres (exch))
+       (sqrty (add (mul (dup (xres)))
+                   (mul (dup (yres)))))}))
+  (def set-usr-screen
+    {(local-dict set-usr-screen-dict
+       (def spot-fn (exch))
+       (def screen-angle (exch))
+       (def cell-size (exch))
+       (def m (currentmatrix (tmp-pictm)))
+       (def rm (rotate (tmp-prot (screen-angle))))
+       (def sm (scale (tmp-scale (dup (cell-size)))))
+       (popy (concatematrix (sm)
+                            (concatematrix (rm) (m) (m))
+                            (m)))
+       (dtransform (m 1 0))             # !!!
+       (def y1 (exch))
+       (def x1 (exch))
+       (def vec-length (sqrty (add (mul (dup (x1)))
+                                   (mul (dup (y1))))))
+       (def frequency (div (find-resolution)
+                           (vec-length)))
+       (def new-screen-angle (atany (y1) (x1)))
+       (ify (gt (mul (gety (m) 2)
+                     (gety (m) 1))
+                (mul (gety (m) 0)
+                     (gety (m) 3)))
+            (
+     
+
+
+## (def-proc set-usr-screen (set-usr-dict)
+##     (spot-fn screen-angle cell-size)
+##   (lety ((m  (currentmatrix (tmp-pictm)))
+##          (rm (rotate (tmp-prot (screen-angle))))
+##          (sm (scale  (tmp-scale (dup (cell-size))))))
+##     (popy (concatematrix sm
+##                          (concatematrix rm m m)
+##                          m))))
+
+
+
+##====================================================================
+## Modifying and Creating Fonts
+##====================================================================
+
+##--------------------------------------------------------------------
+*** Program , p.
+##--------------------------------------------------------------------
+
+
+##--------------------------------------------------------------------
+*** Program , p.
+##--------------------------------------------------------------------
+
+##--------------------------------------------------------------------
+*** Program , p.
+##--------------------------------------------------------------------
+
+##--------------------------------------------------------------------
+*** Program , p.
+##--------------------------------------------------------------------
+
+##--------------------------------------------------------------------
+*** Program , p.
+##--------------------------------------------------------------------
+
+
+
+
+
+##====================================================================
+* More Examples
+##====================================================================
+
+##--------------------------------------------------------------------
+** Random Walk
+##--------------------------------------------------------------------
+(defun random-walk4 (time step init-x init-y)
+  (moveto init-x init-y)
+  (dotimes (i time)
+    (let ((num (random 4)))
+      (case num
+        (0 (rlineto step 0))
+        (1 (rlineto 0 step))
+        (2 (rlineto (* -1 step) 0))
+        (3 (rlineto 0 (* -1 step)))))))
+
+(ps-view
+  (stroke (random-walk4 5000 5 500 500))
+  (showpage))
+
+(defun prob (numer denom)
+  (unless (and (integerp numer) (integerp denom))
+    (error "Not integer."))
+  (if (<= (random denom) (1- numer))
+      t
+      nil))
+
+##---------------------------------
+(defun random-walk8 (time step init-x init-y)
+  (let ((-step (* -1 step)))
+    (moveto init-x init-y)
+    (dotimes (i time)
+      (let ((num (random 8)))
+        (apply #'rlineto (case num
+                           (0 `(,step    0))
+                           (1 `(0       ,step))
+                           (2 `(,-step   0))
+                           (3 `(0      ,-step))
+                           (4 `(,step   ,step))
+                           (5 `(,-step ,-step))
+                           (6 `(,-step  ,step))
+                           (7 `(,step  ,-step))))))))
+
+(ps-view
+  (stroke (random-walk8 5000 5 500 500))
+  (showpage))
+
+##---------------------------------
+(defun brown-motion (time step init-x init-y)
+  (let* ((-step       (* -1 step))
+         (step/sqrt2  (/ step (sqrt 2)))
+         (-step/sqrt2 (* -1  step/sqrt2)))
+    (moveto init-x init-y)
+    (dotimes (i time)
+      (let ((num (random 8)))
+        (apply #'rlineto (case num
+                           (0 `(,step  0))
+                           (1 `(0     ,step))
+                           (2 `(,-step 0))
+                           (3 `(0    ,-step))
+                           (4 `(,step/sqrt2   ,step/sqrt2))
+                           (5 `(,-step/sqrt2 ,-step/sqrt2))
+                           (6 `(,-step/sqrt2  ,step/sqrt2))
+                           (7 `(,step/sqrt2  ,-step/sqrt2))))))))
+
+(ps-view
+  (stroke (brown-motion 5000 5 500 500))
+  (showpage))
+
+##--------------------------------------------------------------------
+** Factorial
+##--------------------------------------------------------------------
+
+(defun fact (n)
+  (labels ((rec (n acc)
+             (if (= n 0)
+                 acc
+                 (rec (- n 1) (* n acc)))))
+    (rec n 1)))
+
+(def-proc fact (n) ()
+  (def-proc rec (n acc) ()
+    (ifelse (eqy n 0)
+            acc
+            (rec (sub n 1) (mul n acc))))
+  (rec n 1))
+=>
+/fact {/n exch def
+       /rec {/acc exch def
+             /n exch def
+             n 0 eq {acc}
+                    {n 1 sub n acc mul rec} ifelse
+            } def
+       n 1 rec} def
+
+
+(defun fact (n)
+  (if (= n 0)
+      1
+      (* n (fact (- n 1)))))
+
+(def-proc fact (n) ()
+  (ifelse (eqy n 0)
+          1
+          (mul n (fact (sub n 1)))))
+=>
+/fact {/n exch def 
+       n 0 eq {1}
+              {n n 1 sub fact mul} ifelse
+      } def
+
+(defun fact (n)
+  (if (= n 0)
+      1
+      (if (/= n 1)
+          (* n (fact (1- n)))
+          "undefined")))
+
+(def-proc fact (n) ()
+  (ifelse (eqy n 0)
+          1
+          (ifelse (ne n 1)
+                  (mul n (fact (sub n 1)))
+                  "undefined")))
+=>
+
+
+##--------------------------------------------------------------------
+* Tips
+##--------------------------------------------------------------------
+
+作図過程における、３種類のコスト
+1. cl-psプログラム作成コスト
+2. lisp system実効速度（psファイル作成速度）
+3. ps system実効速度　（psファイル解釈実行速度）
+
+ 重視すべきコストは、スケッチ期で１、仕上げ期で３。
+ ２は通常あまり気にせずとも良い。
+ ２はコンパイルにかかる時間のようなもの。
+ ソースコードのコンパイルにかかる時間とオブジェクトコードの実行時間は別もの
+ ３は解釈実行にかかる時間的コストと、
+ ファイル容量の大きさという空間的コストにさらに細分される。
+
+ スケッチ期はとにかく図を出力することを目標に、lisp関数を用いる。
+ 仕上げ期は高速なpsファイル作成を目標に、
+ lisp関数をps手続きで置き換えること(defun -> def, defuny, def-proc)、
+ 計算をlispに行わせpsの計算量を軽減すること等を考える。
+
+
+CL calculates, PS only draws.
+
+
+##--------------------------------------------------------------------
+## 
+##--------------------------------------------------------------------
+
+## (ps-view
+##   (newpath)
+##   (dotimes (i 11)
+##     (moveto (* 10 i) 0)
+##     (lineto (* 10 i) 100))
+##   (dotimes (i 11)
+##     (moveto 0 (* 10 i))
+##     (lineto 100 (* 10 i)))
+##   (stroke)
+##   (showpage))
+
+##--------------------------------------------------------------------
+* References
+##--------------------------------------------------------------------
+
+[RedBook]
+   Adobe Sytems Inc. (1992),
+   "PostScript® Language Reference 3rd ed."
+  
+[GreenBook]
+   Adobe Sytems Inc. (1992),
+   "PostScript® Language Program Design"
+  
+[BlueBook]
+   Adobe Sytems Inc. (1992),
+   "PostScript® Language Tutorial and Cookbook"
+
+[REF+]
+   Adobe Sytems Inc. (1999),
+   "PostScript® Language Reference Supplement
+    Adobe PostScript 3 Version 3010 and 3011 Product Supplement"
+
+[DSC]
+   Adobe Sytems Inc. (1992),
+   "Postscript® Language Document Structuring Conventions
+    Specification, ver.3.0", Technical Note #5001.
+
+[DCE]
+   Adobe Systems Inc. (1999),
+   "PostScript® Language Document Comment Extensions
+    for Page Layout", Technical Note #5644.
+
+[EPS]
+   Adobe Systems Inc. (1992),
+   "Encapsulated PostScript File Format Specification, ver.3.0",
+   Technical Note #5002.
+
+[PLisp]
+   John Peterson (1987), "PLisp"
+ 
+[PLisp+EPS]
+   Philip Dorrell (2004), "PLisp"+EPS generation, http://www.1729.com/
+
+
+##--------------------------------------------------------------------
+* Todo
+##--------------------------------------------------------------------
+
+*優先度順*
+
++ 制御関連のPSオペレータの実装
+
++ ary,str,dictの実装
+
++ font関連のPSオペレータの実装
+
++ image関連のPSオペレータの実装
+  + EPS関連
+
++ error処理
+
++ ドキュメントの完成
+  + README.markdown
+  + doc/index-ja.org
+  + doc/index.org (英訳)
+
++ PS pprint
+  + 見やすいインデント
+  + DSC (Document Structuring Conventions) に適合したPSコードの生成
+
++ 最適化
+  + 生成されるPSコードのPostScriptとしての効率の最適化
+  + (必要なら)Lispコードとしての効率の最適化
+
+
+##====================================================================
