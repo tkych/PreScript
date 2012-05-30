@@ -1,4 +1,4 @@
-Last Updated : 2012/05/31 00:12:33 tkych
+Last Updated : 2012/05/31 01:11:48 tkych
 
 
 *!!!Warning!!!*
@@ -16,13 +16,16 @@ Last Updated : 2012/05/31 00:12:33 tkych
 ## Introduction
 
 PreScript is a DSL for generating an image in Common Lisp.
-Roughly speaking, PreScript is PostScript represented by S-expressions
+Roughly speaking, PreScript is [PostScript][] represented by S-expressions
  (PostScript is a registered trademark of Adobe Systems Inc.).
 PostScript is stack-oriented, Turing-complete programming language with numerous operators for image generation.
 PreScript generates PostScript code, and outputs the image to the appropriate viewer.
 In PreScript, we can easily write code without having to worry about stack mechanism that is the cause of the complexity of the PostScript code.
 
-For further details, please see documents index(Under Translation) or index-ja(Japanese) in doc directory.
+For further details, please see documents index (Under Translation) or index-ja (Japanese) in doc directory.
+
+
+  [PostScript]: http://www.adobe.com/products/postscript/
 
 
 ## The Goal of PreScript
@@ -31,7 +34,7 @@ Plain Common Lisp does not have the ability to produce an image.
 Thus, when a Lisp programmer draws a picture, he (or she) has to use another language other than Lisp.
 PostScript is often used as such a language.
 Because it is  
-For example, in pp.339--49 of CLtL2, there is CL program that generates PostScript code.
+For example, in pp.339--49 of [CLtL2][], there is CL program that generates PostScript code.
 It plots the behavior of mathematical functions.
 
 The extensibility is supported by a stack mechanism, has become a source of strength for the PostScript.
@@ -45,11 +48,14 @@ as if all functions and macros is depend on the value of special variable that c
 When a programmer reads or write code, he (or she) must always pay attention to its value.
 
 
-The goal of PreScript is to achieve the following three points.
+The goal of PreScript is to achieve the following 3 points.
 
 1. To be able to generate images in Common Lisp.
 2. Without having to be aware of the presence of stack mechanism, reading and writing of programs to become available.
 3. To maintain extensibility that is supported by stack mechanism.
+
+
+  [CLtL2]: http://www.cs.cmu.edu/Groups/AI/html/cltl/cltl2.html
 
 
 ## Dependencies
@@ -77,7 +83,7 @@ The goal of PreScript is to achieve the following three points.
 
 ## Examples
 
-`->` is from Clojure
+`->` is from [Clojure](http://clojure.org/)
 
       PS> (ps-view
             (-> (make-space)
