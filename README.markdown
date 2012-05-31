@@ -1,4 +1,4 @@
-Last Updated : 2012/05/31 21:30:13 tkych
+Last Updated : 2012/05/31 21:37:56 tkych
 
 *!!!Warning!!!*
 
@@ -75,7 +75,7 @@ All operators is closed as an operation on the user space.
 
 ### Output ###
 
-Output operator is an abstraction of the behavior painter when seeing the picture.
+Output operator is an abstraction of the behavior of the painter when seeing the picture.
 
 
 Dependencies
