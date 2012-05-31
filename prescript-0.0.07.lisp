@@ -1,11 +1,14 @@
-;;;; Last Updated : 2012/05/31 00:15:03 tkych
+;;;; Last Updated : 2012/05/31 21:11:15 tkych
 
 
-;; Supercalifragilisticexpialidocious
+;; (push #P"/home/tkych/projects/PreScript/" asdf:*central-registry*)
+;; (ql:quickload :prescript)
+
 ;;--------------------------------------------------------------------
 ;; cl-utils
 ;;--------------------------------------------------------------------
-(ql:quickload :trivial-shell)
+(eval-when (:compile-toplevel :load-toplevel)
+  (ql:quickload :trivial-shell))
 
 
 (defmacro -> (x &rest form)
@@ -19,12 +22,7 @@
 ;;--------------------------------------------------------------------
 ;; Memo
 ;;--------------------------------------------------------------------
-;; oprd-stack    <- default stack
-;; exe-stack     <- proc
-;; dict-stack    <- def
-;; graphic-state-stack
-;; #[ ]          <- ps-ary
-;; #{ }          <- ps-proc
+;; Supercalifragilisticexpialidocious
 
 
 
@@ -33,12 +31,10 @@
 ;;====================================================================
 
 (defclass user-space ()
-     ((vars   :accessor :vars   :initarg :vars   :initform nil)
-      (procs  :accessor :procs  :initarg :procs  :initform nil)
-      (oprd   :accessor :oprd   :initarg :oprd   :initform nil)
-      (dict   :accessor :dict   :initform (make-hash-table))
-      ;; (gstate :accessor :gstate :initarg :gstate :initform nil)
-      ;; (cache  :accessor :cache  :initarg :cache  :initform nil)
+     ((vars  :accessor :vars  :initarg :vars  :initform nil)
+      (procs :accessor :procs :initarg :procs :initform nil)
+      (oprd  :accessor :oprd  :initarg :oprd  :initform nil)
+      (dict  :accessor :dict  :initarg :dict  :initform (make-ht))
       ))
 
 (defun space? (x) (typep x 'user-space))
@@ -49,18 +45,11 @@
 
 (defun copy-space (space)
   (with-slots (vars procs oprd dict) space
-     (make-inst 'user-space
-                :vars (copy-list vars)
-                :procs (copy-list procs)
-                :oprd (copy-list oprd)
-                :dict (copy-hash dict))))
+     (make-inst 'user-space :vars  (copy-list vars)
+                            :procs (copy-list procs)
+                            :oprd  (copy-list oprd)
+                            :dict  (copy-hash dict))))
 
-;; (defmethod equal ((s1 user-space) (s2 user-space))
-;;   (and (equal (:oprd s1)  (:oprd s2))
-;;        (equal (:vars s1)  (:vars s2))
-;;        (equal (:procs s1) (:procs s2))
-;;        (equal (:dict s1)  (:dict s2))))
-  
 (defun space-equal (s1 s2)
   (and (equal (:oprd s1)  (:oprd s2))
        (equal (:vars s1)  (:vars s2))
@@ -113,6 +102,107 @@
 ;;====================================================================
 
 
+;;====================================================================
+;; PS-ARRAY, STRING, DICTIONARY, FONT; [], {}, (), <<>>
+;;====================================================================
+
+;;--------------------------------------
+;; ary: [], {}
+
+([] space (moveto 2 3) (lineto 30 40))
+->
+(-> space
+    (any "[ ")
+    (moveto 2 3) (lineto 30 40)
+    (any " ]"))
+
+
+;; ([] (make-space) (moveto 2 3) (lineto 30 40))
+(defmacro [] (space &rest args)
+  (with-gensyms (s)
+    `(let ((,s ,space))
+       (-> ,s (any "[ ") ,@(trans-args args) (any " ]")))))
+
+(defun escape-ary-elt (elts)
+  (loop :for elt :in elts
+        :collect
+        (cond ((null        elt)  nil)
+              ((eql 'false  elt) `(any " false"))
+              ((eql 'true   elt) `(any " true"))
+              ((stringp     elt) `(any-fstring " (~A)" ,elt))
+              ((arrayp      elt) `(escape-ary-elt ,elt))
+              ((sym-in-ary? elt) `(any-fstring " /~(~A~)" ,(2nd elt)))
+              ((token?      elt) `(any-fstring " /~(~A~)" ,elt))
+              ((numberp     elt) `(any-fstring " ~A" ,elt))
+              (t elt))))
+
+(defun token? (x) (and (atom x) (not (numberp x))))
+(defun sym-in-ary? (x) (and (listp x) (eq 'quote (car x))))
+
+
+;; (ps-parser1 1 2 #(3 4 #("og \"u" 'mog)) 'aAa (moveto 6 7) "agaga")
+;; => 6 7 moveto 1 2 [ 3 4 [ (og "u) /mog ] ] /aaa (agaga)
+(defun ps-parser1 (&rest objs)
+  (mapc (^ (obj)
+             (cond ((null        obj)  nil)
+                   ((eql 'false  obj) (any " false"))
+                   ((eql 'true   obj) (any " true"))
+                   ((stringp     obj) (any " (~A)" obj))
+                   ((arrayp      obj) (ps-ary-parser obj))
+                   ((sym-in-ary? obj) (any " /~(~A~)" (2nd obj)))
+                   ((token?      obj) (any " /~(~A~)" obj))
+                   ((numberp     obj) (any " ~A" obj))
+                   (t obj)))
+        objs)
+  nil)
+
+
+;; ({} (make-space) (moveto 2 3) (lineto 30 40))
+(defmacro {} (space &rest args)
+  (with-gensyms (s)
+    `(let ((,s ,space))
+       (-> ,s (any "{ ") ,@(trans-args args) (any " }")))))
+
+
+;; {'(1 1) 'ss "ahaha" (moveto 2 3) (lineto 4 4)}
+;; => { [1 1] /ss (ahaha) 2 3 moveto 4 4 lineto}
+;; (defun ps-ex-ary-reader (input-stream macro-char)
+;;   (declare (ignore macro-char))
+;;   `(progn (fout " {")
+;;           (ps-parser2 ,@(read-delimited-list #\} input-stream nil))
+;;           (fout "}")))
+
+;; (set-macro-character #\{ #'ps-ex-ary-reader)
+;; (set-macro-character #\} (get-macro-character #\)))
+
+
+;;; #"Times-Roman"
+;;; -> (FOUT "~&/~A" "Times-Roman")
+;;; => /Times-Roman
+;; (defun font-reader (input-stream sub-char numarg)
+;;   (declare (ignore sub-char numarg))
+;;   (let ((font nil))
+;;     (do ((char (read-char input-stream) (read-char input-stream)))
+;;         ((char= char #\"))
+;;       (push char font))
+;;     `(fout "~&/~A" ,(coerce (nreverse font) 'string))))
+
+;; (set-dispatch-macro-character #\# #\" #'font-reader)
+
+
+
+
+
+
+
+
+
+
+;;====================================================================
+
+
+
+
 
 ;;====================================================================
 ;; DEF, DEFPROC
@@ -153,8 +243,8 @@
                          (symbol (rec xs x args result))
                          (string (rec xs op (cons x args) result))
                          (number (rec xs op (cons x args) result))
-                         (list (rec xs op nil
-                                    (rec x op args result)))))))))
+                         (list   (rec xs op nil
+                                      (rec x op args result)))))))))
     (mapcan (^ (x) (nreverse (rec x nil nil nil)))
             forms)))
 
@@ -285,36 +375,6 @@
 ;; => ary/dict/str {proc1 proc2 ...} forall
 
 ;; (defmacro forall (space ary/dict/str &rest procs)
-
-
-
-;;====================================================================
-
-
-;;====================================================================
-;; PS-ARRAY, STRING, DICTIONARY; [], {}, (), <<>>
-;;====================================================================
-
-
-;;; #"Times-Roman"
-;;; -> (FOUT "~&/~A" "Times-Roman")
-;;; => /Times-Roman
-;; (defun font-reader (input-stream sub-char numarg)
-;;   (declare (ignore sub-char numarg))
-;;   (let ((font nil))
-;;     (do ((char (read-char input-stream) (read-char input-stream)))
-;;         ((char= char #\"))
-;;       (push char font))
-;;     `(fout "~&/~A" ,(coerce (nreverse font) 'string))))
-
-;; (set-dispatch-macro-character #\# #\" #'font-reader)
-
-
-
-
-
-
-
 
 
 
