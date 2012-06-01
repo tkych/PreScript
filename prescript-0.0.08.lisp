@@ -1,33 +1,66 @@
-;;;; Last Updated : 2012/05/31 21:11:15 tkych
+;;;; Last Updated : 2012/06/01 19:47:44 tkych
 
 
 ;; (push #P"/home/tkych/projects/PreScript/" asdf:*central-registry*)
 ;; (ql:quickload :prescript)
 
-;;--------------------------------------------------------------------
-;; cl-utils
-;;--------------------------------------------------------------------
-(eval-when (:compile-toplevel :load-toplevel)
-  (ql:quickload :trivial-shell))
+;; PreScript/
+;;   README.markdown
+;;   prescript.asd
+;;   in-package.lisp
+;;   api-package.lisp
+;;   cl-utils.lisp
+;;   src/
+;;     space.lisp
+;;     draw-ops.lisp
+;;     def-ops.lisp
+;;     control-ops.lisp
+;;     output.lisp
+;;     prescript-utils.lisp
+;;   doc/
+;;     index.org
+;;     index.html
+;;     index-ja.org
+;;     index-ja.html
+;;     images/
 
-
-(defmacro -> (x &rest form)
-  (cond ((null    form) x)
-        ((single? form) (let ((first (1st form)))
-                          (if (consp first)
-                              `(,(1st first) ,x ,@(rest first))
-                              `(,first ,x))))
-        (t `(-> (-> ,x ,(1st form)) ,@(rest form)))))
 
 ;;--------------------------------------------------------------------
 ;; Memo
 ;;--------------------------------------------------------------------
-;; Supercalifragilisticexpialidocious
+
+;; defproc <- local-dict, local-gstate
 
 
+
+;;--------------------------------------------------------------------
+;; cl-utils
+;;--------------------------------------------------------------------
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (ql:quickload :cl-ppcre)
+  (ql:quickload :trivial-shell))
+
+(defun as-key (sym) (intern (symbol-name sym) :keyword))
+
+;; (defmacro -> (x &rest form)
+;;   (cond ((null    form) x)
+;;         ((single? form) (let ((first (1st form)))
+;;                           (if (consp first)
+;;                               `(,(1st first) ,x ,@(rest first))
+;;                               `(,first ,x))))
+;;         (t `(-> (-> ,x ,(1st form)) ,@(rest form)))))
+
+
+;;--------------------------------------------------------------------
+;; PreScript-utils
+;;--------------------------------------------------------------------
+(defmacro defop (name args &body body)
+  `(defun ,name (space ,@args)
+     (-> space
+         ,@body)))
 
 ;;====================================================================
-;; PreScript: Embeded PostScript in Common Lisp
+;; PreScript: Lispized PostScript
 ;;====================================================================
 
 (defclass user-space ()
@@ -99,22 +132,59 @@
     load quit
     )
 
+(defun any (space &rest args)
+  (push (format nil "~&~{~A~^ ~}" args) (:oprd space))
+  space)
+
+(defun any-fstring (space fstring &rest args)
+  (push (apply #'format nil fstring args) (:oprd space))
+  space)
+
 ;;====================================================================
 
 
 ;;====================================================================
-;; PS-ARRAY, STRING, DICTIONARY, FONT; [], {}, (), <<>>
+;; STRING, FONT, DICTIONARY, ARRAY: [], {}, (), <<>>
 ;;====================================================================
+;; #"string" -> "(string)"
+;; $Times-Roman -> "/Times-Roman"
+
 
 ;;--------------------------------------
-;; ary: [], {}
+;; STRING
+;;--------------------------------------
+;; #"some-string" -> "(some-string)"
+;; !!!! #"\"io" -> error !!!!
+(defun ps-string-reader (input-stream sub-char numarg)
+  (declare (ignore sub-char numarg))
+  (let ((font nil))
+    (do ((char (read-char input-stream) (read-char input-stream)))
+        ((char= char #\"))
+      (push char font))
+    (format nil "(~A)" (coerce (nreverse font) 'string))))
 
-([] space (moveto 2 3) (lineto 30 40))
-->
-(-> space
-    (any "[ ")
-    (moveto 2 3) (lineto 30 40)
-    (any " ]"))
+(set-dispatch-macro-character #\# #\" #'ps-string-reader)
+
+;;--------------------------------------
+;; FONT
+;;--------------------------------------
+;; $Times-Roman -> "/Times-Roman"
+(set-macro-character #\$
+  (lambda (stream char)
+    (declare (ignore char))
+    (format nil "/~{~@(~A~)~^-~}"
+            (ppcre:split #\- (symbol-name (read stream t nil t))))))
+
+;;--------------------------------------
+;; ARRAY: [], {}
+;;--------------------------------------
+
+;; ([] space (moveto 2 3) (lineto 30 40))
+;; ->
+;; (-> space
+;;     (any "[ ")
+;;     (moveto 2 3) (lineto 30 40)
+;;     (any " ]"))
 
 
 ;; ([] (make-space) (moveto 2 3) (lineto 30 40))
@@ -123,45 +193,69 @@
     `(let ((,s ,space))
        (-> ,s (any "[ ") ,@(trans-args args) (any " ]")))))
 
-(defun escape-ary-elt (elts)
-  (loop :for elt :in elts
-        :collect
-        (cond ((null        elt)  nil)
-              ((eql 'false  elt) `(any " false"))
-              ((eql 'true   elt) `(any " true"))
-              ((stringp     elt) `(any-fstring " (~A)" ,elt))
-              ((arrayp      elt) `(escape-ary-elt ,elt))
-              ((sym-in-ary? elt) `(any-fstring " /~(~A~)" ,(2nd elt)))
-              ((token?      elt) `(any-fstring " /~(~A~)" ,elt))
-              ((numberp     elt) `(any-fstring " ~A" ,elt))
-              (t elt))))
+(defclass ps-ary ()
+     ((cont :accessor :cont :initarg :cont :initform nil)))
+
+(defclass ary (ps-ary) ())
+(defun ary? (x) (typep x 'ary))
+
+(defclass exe-ary (ps-ary) ())
+(defun exe-ary? (x) (typep x 'exe-ary))
 
 (defun token? (x) (and (atom x) (not (numberp x))))
-(defun sym-in-ary? (x) (and (listp x) (eq 'quote (car x))))
 
+;; ;; ({} (make-space) (moveto 2 3) (lineto 30 40))
+;; (defmacro {} (space &rest args)
+;;   (with-gensyms (s)
+;;     `(let ((,s ,space))
+;;        (-> ,s (any "{ ") ,@(trans-args args) (any " }")))))
+
+
+;; ;; {'(1 1) 'ss "ahaha" (moveto 2 3) (lineto 4 4)}
+;; ;; => { [1 1] /ss (ahaha) 2 3 moveto 4 4 lineto}
+
+;; ;; {'(1 1) 'ss "ahaha" (moveto 2 3) (lineto 4 4)}
+;; ;; -> (any "{") (any "[1 1]") (any "/ss") (moveto 2 3) (lineto 4 4) (any "}")
+;; (defun exe-ary-reader (input-stream macro-char)
+;;   (declare (ignore macro-char))
+;;   (list '(any " {")
+;;         (loop :for elt :in (read-delimited-list #\} input-stream nil)
+;;               :if (consp elt) :collect elt
+;;               :else :collect `(any ,(escape-elt elt)))
+;;         '(any " {")))
+
+;; (set-macro-character #\{ #'exe-ary-reader)
+;; (set-macro-character #\} (get-macro-character #\)))
+
+
+;;--------------------------------------------------------------------
+
+
+
+;;--------------------------------------------------------------------
 
 ;; (ps-parser1 1 2 #(3 4 #("og \"u" 'mog)) 'aAa (moveto 6 7) "agaga")
 ;; => 6 7 moveto 1 2 [ 3 4 [ (og "u) /mog ] ] /aaa (agaga)
-(defun ps-parser1 (&rest objs)
-  (mapc (^ (obj)
-             (cond ((null        obj)  nil)
-                   ((eql 'false  obj) (any " false"))
-                   ((eql 'true   obj) (any " true"))
-                   ((stringp     obj) (any " (~A)" obj))
-                   ((arrayp      obj) (ps-ary-parser obj))
-                   ((sym-in-ary? obj) (any " /~(~A~)" (2nd obj)))
-                   ((token?      obj) (any " /~(~A~)" obj))
-                   ((numberp     obj) (any " ~A" obj))
-                   (t obj)))
-        objs)
-  nil)
+;; (defun ps-parser1 (&rest objs)
+;;   (mapc (^ (obj)
+;;              (cond ((null        obj)  nil)
+;;                    ((eql 'false  obj) (any " false"))
+;;                    ((eql 'true   obj) (any " true"))
+;;                    ((stringp     obj) (any " (~A)" obj))
+;;                    ((arrayp      obj) (ps-ary-parser obj))
+;;                    ((sym-in-ary? obj) (any " /~(~A~)" (2nd obj)))
+;;                    ((token?      obj) (any " /~(~A~)" obj))
+;;                    ((numberp     obj) (any " ~A" obj))
+;;                    (t obj)))
+;;         objs)
+;;   nil)
 
 
 ;; ({} (make-space) (moveto 2 3) (lineto 30 40))
-(defmacro {} (space &rest args)
-  (with-gensyms (s)
-    `(let ((,s ,space))
-       (-> ,s (any "{ ") ,@(trans-args args) (any " }")))))
+;; (defmacro {} (space &rest args)
+;;   (with-gensyms (s)
+;;     `(let ((,s ,space))
+;;        (-> ,s (any "{ ") ,@(trans-args args) (any " }")))))
 
 
 ;; {'(1 1) 'ss "ahaha" (moveto 2 3) (lineto 4 4)}
@@ -191,44 +285,26 @@
 
 
 
-
-
-
-
-
-
-
 ;;====================================================================
 
 
 
-
-
 ;;====================================================================
-;; DEF, DEFPROC
+;; PS-PARSER
 ;;====================================================================
 
-;; (def s name (stringy 3))
-;; (def s name 9) -> (let ((name 9)) body)
-;; (def s [1 2 3 4]) -> not let
-;; (def s name #{body}) -> (defproc s name () body)
+(defun escape-elt (elt)
+  (cond ((null       elt) nil)
+        ((eql 'false elt) " false")
+        ((eql 'true  elt) " true")
+        ((stringp    elt) (format nil " (~A)" elt))
+        ((ary?       elt) (str "[" (escape-elt elt) "]"))
+        ((exe-ary?   elt) (str "{" (escape-elt elt) "}"))
+        ((numberp    elt) (format nil " ~A" elt))
+        ((space?     elt) elt)
+        ((token?     elt) (format nil " /~(~A~)" elt))
+        (t                (error "~A is not PreScript type." elt))))
 
-;; (defmacro def (space var &rest args)
-;;   `(progn
-;;      (push (str (format nil "/~A" ',var)
-;;                 (if (consp args
-
-;;                 " def")
-;;            (:vars ,space))
-
-
-;;--------------------------------------------------------------------
-(defun search-proc (proc-tag space)
-  (member proc-tag (:procs space)))
-
-(defun push-proc (proc-tag proc-body space)
-  (pushnew proc-tag (:procs space))
-  (push-hash proc-tag proc-body (:dict space)))
 
 ;; Thank Mr.294 in [Intro] Common Lisp No.9 [Ten Thousand FAQ] at 2ch
 (defun trans-args (forms)
@@ -248,6 +324,63 @@
     (mapcan (^ (x) (nreverse (rec x nil nil nil)))
             forms)))
 
+
+
+
+
+;;====================================================================
+
+
+
+
+
+;;====================================================================
+;; DEF, DEFPROC
+;;====================================================================
+;; (def space name {,@body}) <=> (defproc space name () . body)
+
+(defun have-var? (var-tag space)
+  (member var-tag (:vars space)))
+
+(defun push-var (var-tag var-body space)
+  (pushnew var-tag (:vars space))
+  (push-hash var-tag var-body (:dict space)))
+
+(defmacro make-var-body (name body)
+  (with-gensyms (s tmp-space)
+    `(with-output-to-string (,s)
+       (let ((,tmp-space (make-space)))
+         (-> ,tmp-space ,@(trans-args body))
+         (format ,s "~&/~A~{ ~A~^~&~} def" ',name
+                 (nreverse (:oprd ,tmp-space)))))))
+
+(defmacro def (space name &body body)
+  (let ((var-key (as-key name)))
+    (with-gensyms (s var-body)
+      `(let ((,s ,space) ;for (-> (make-space) (defvar name ...))
+             (,var-body (make-var-body ,name ,body)))
+         (push-var ,var-key ,var-body ,s)
+         (defun-var ,name ,var-key)
+         (values ,s ',name)))))
+
+(defmacro def (space name &body body)
+  (with-gensyms (s)
+    `(let ((,s ,space))
+       (-> ,s
+           (any-fstring "/~A" ',name)
+           ,@(loop :for elt :in body
+                   :if (consp elt) :collect elt
+                   :else :collect `(any ,(escape-elt elt)))))))
+
+;;--------------------------------------------------------------------
+(defun have-proc? (proc-tag space)
+  (member proc-tag (:procs space)))
+
+(defun push-proc (proc-tag proc-body space)
+  (pushnew proc-tag (:procs space))
+  (push-hash proc-tag proc-body (:dict space)))
+
+
 (defmacro make-proc-body (name args body)
   (with-gensyms (s tmp-space)
     `(with-output-to-string (,s)
@@ -265,7 +398,7 @@
 
 (defmacro defun-proc (proc-name proc-key)
   `(defun ,proc-name (space &rest args)
-     (if (not (search-proc ,proc-key space))
+     (if (not (have-proc? ,proc-key space))
          (error
           ,(format nil "Space ~~A does not have ps-proc ~A." proc-name)
           space)
@@ -276,7 +409,7 @@
            space))))
 
 (defmacro defproc (space name (&rest args) &body body)
-  (let ((proc-key (intern (symbol-name name) :keyword)))
+  (let ((proc-key (as-key name)))
     (with-gensyms (s proc-body)
       `(let ((,s ,space) ;for (-> (make-space) (defproc name ...))
              (,proc-body (make-proc-body ,name ,args ,body)))
@@ -290,13 +423,6 @@
 ;;====================================================================
 ;; PS-CONTROL-OPERETORS: ify ifelse loopy repeat fory forall
 ;;====================================================================
-(defun any (space &rest args)
-  (push (format nil "~&~{~A~^ ~}" args) (:oprd space))
-  space)
-
-(defun any-fstring (space fstring &rest args)
-  (push (apply #'format nil fstring args) (:oprd space))
-  space)
 
 ;;--------------------------------------
 ;; (IFY space test procs) -> test {procs} if 

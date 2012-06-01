@@ -1,8 +1,8 @@
-Last Updated : 2012/05/31 21:37:56 tkych
+Last Updated : 2012/06/01 19:49:02 tkych
 
 *!!!Warning!!!*
 
-*Current version of PreScript is 0.0.07 (experimental alpha).*
+*Current version of PreScript is 0.0.08 (experimental alpha).*
 
 *Current purpose of PreScript repository is to back up files.*
 
@@ -16,7 +16,8 @@ PreScript: Lispized PostScript
 Introduction
 ------------
 
-PreScript is a DSL for generating an image in Common Lisp.
+PreScript is a DSL for generating an image in Common Lisp (or PostScript interface).
+
 Roughly speaking, PreScript is [PostScript][] represented as S-expressions (PostScript is a registered trademark of Adobe Systems Inc.).
 PostScript is stack-based, postfix notation style, Turing-complete programming language with numerous operators for image generation.
 PreScript generates PostScript code, and outputs the image to the appropriate viewer.
