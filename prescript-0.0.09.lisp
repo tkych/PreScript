@@ -1,4 +1,4 @@
-;;;; Last Updated : 2012/06/01 20:07:28 tkych
+;;;; Last Updated : 2012/06/02 10:05:34 tkych
 
 
 ;;--------------------------------------------------------------------
@@ -71,7 +71,20 @@
   (make-inst 'user-space
              ))
 
-(defun copy-space (space)
+(defun copy-space (space &rest copy-slots)
+  (if (not copy-slots)
+      (with-slots (vars procs oprd dict) space
+         (make-inst 'user-space :vars  (copy-list vars)
+                    :procs (copy-list procs)
+                    :oprd  (copy-list oprd)
+                    :dict  (copy-hash dict)))
+      (make-inst 'user-space :vars  (copy-list vars)
+                 :procs (copy-list procs)
+                 :oprd  (copy-list oprd)
+                 :dict  (copy-hash dict))))
+
+(defun copy-space (space &optional
+                         (slots '(:vars :procs :oprd :dict) slotts?))
   (with-slots (vars procs oprd dict) space
      (make-inst 'user-space :vars  (copy-list vars)
                             :procs (copy-list procs)
@@ -79,10 +92,10 @@
                             :dict  (copy-hash dict))))
 
 (defun space-equal (s1 s2)
-  (and (equal (:oprd s1)  (:oprd s2))
-       (equal (:vars s1)  (:vars s2))
+  (and (equal (:oprd  s1) (:oprd  s2))
+       (equal (:vars  s1) (:vars  s2))
        (equal (:procs s1) (:procs s2))
-       (equal (:dict s1)  (:dict s2))))
+       (equal (:dict  s1) (:dict  s2))))
 
 ;;====================================================================
 
@@ -155,27 +168,31 @@
 ;;--------------------------------------
 ;; STRING
 ;;--------------------------------------
-;; #"some-string" -> "(some-string)"
-;; !!!! #"\"io" -> error !!!!
+;; #"some-string" ~> "(some-string)"
 (defun ps-string-reader (input-stream sub-char numarg)
   (declare (ignore sub-char numarg))
-  (let ((font nil))
-    (do ((char (read-char input-stream) (read-char input-stream)))
-        ((char= char #\"))
-      (push char font))
-    (format nil "(~A)" (coerce (nreverse font) 'string))))
+  (let ((acc nil))
+    (do ((char (read-char input-stream) (read-char input-stream))
+         (pre nil char))
+        ((and (char= char #\")
+              (char/= pre #\\)))  ;for #"\"string\""
+      (push char acc))
+    (ppcre:regex-replace-all      ;"(\\\"string\\\")" -> "(\"string\")"
+     "\\\\\"" (format nil "(~A)" (coerce (nreverse acc) 'string))
+     "\"" :preserve-case t)))
 
 (set-dispatch-macro-character #\# #\" #'ps-string-reader)
+
 
 ;;--------------------------------------
 ;; FONT
 ;;--------------------------------------
-;; $Times-Roman -> "/Times-Roman"
+;; $Times-Roman ~> "/Times-Roman"
 (set-macro-character #\$
-  (lambda (stream char)
-    (declare (ignore char))
-    (format nil "/~{~@(~A~)~^-~}"
-            (ppcre:split #\- (symbol-name (read stream t nil t))))))
+  (^ (stream char)
+     (declare (ignore char))
+     (format nil "/~{~@(~A~)~^-~}"
+             (ppcre:split #\- (symbol-name (read stream t nil t))))))
 
 ;;--------------------------------------
 ;; ARRAY: [], {}
@@ -350,6 +367,16 @@
          (format ,s "~&/~A~{ ~A~^~&~} def" ',name
                  (nreverse (:oprd ,tmp-space)))))))
 
+(defmacro defun-var (var-name var-key)
+  `(defun ,var-name (space)
+     (if (not (have-var? ,var-key space))
+         (error
+          ,(format nil "Space ~~A does not have variable ~A." var-name)
+          space)
+         (progn (push ,(format nil "~(~A~)" var-name)
+                      (:oprd space))
+                space))))
+
 (defmacro def (space name &body body)
   (let ((var-key (as-key name)))
     (with-gensyms (s var-body)
@@ -359,14 +386,14 @@
          (defun-var ,name ,var-key)
          (values ,s ',name)))))
 
-(defmacro def (space name &body body)
-  (with-gensyms (s)
-    `(let ((,s ,space))
-       (-> ,s
-           (any-fstring "/~A" ',name)
-           ,@(loop :for elt :in body
-                   :if (consp elt) :collect elt
-                   :else :collect `(any ,(escape-elt elt)))))))
+;; (defmacro def (space name &body body)
+;;   (with-gensyms (s)
+;;     `(let ((,s ,space))
+;;        (-> ,s
+;;            (any-fstring "/~A" ',name)
+;;            ,@(loop :for elt :in body
+;;                    :if (consp elt) :collect elt
+;;                    :else :collect `(any ,(escape-elt elt)))))))
 
 ;;--------------------------------------------------------------------
 (defun have-proc? (proc-tag space)
@@ -422,11 +449,11 @@
 
 ;;--------------------------------------
 ;; (IFY space test procs) -> test {procs} if 
-;; (ify (make-space) (ne 1 2) (moveto 2 3))
-;; (ify (make-space) (ne 1 2) (2 3))
-;; (ify (make-space) (ne 1 2) 3)
-;; (ify (make-space) (ne 1 2) ((moveto 4 7) (moveto 2 3)))
-;; (ify (make-space) (ne 1 2) (moveto 4 7) (moveto 2 3))
+;; (ps-output (ify (make-space) (ne 1 2) (moveto 2 3)))
+;; (ps-output (ify (make-space) (ne 1 2) (2 3)))
+;; (ps-output (ify (make-space) (ne 1 2) 3))
+;; (ps-output (ify (make-space) (ne 1 2) ((moveto 4 7) (moveto 2 3))))
+;; (ps-output (ify (make-space) (ne 1 2) (moveto 4 7) (moveto 2 3)))
 (defmacro ify (space test &rest procs)
   (with-gensyms (s)
     `(let ((,s ,space))
@@ -479,7 +506,7 @@
 
 ;;--------------------------------------
 ;; (FORY space start step end proc1 proc2 ...)
-;; => start step end {proc1 proc2 ...} for
+;; -> start step end {proc1 proc2 ...} for
 ;; (ps-output (fory (make-space) 1 2 29 (moveto 3 4)))
 ;; (ps-output (fory (make-space) 1 (neg 2) (add 3 29) (moveto 3 4)))
 ;; !!start = procs??
@@ -494,7 +521,7 @@
 
 ;;--------------------------------------
 ;; (forall space ary/dict/str proc1 proc2 ...)
-;; => ary/dict/str {proc1 proc2 ...} forall
+;; -> ary/dict/str {proc1 proc2 ...} forall
 
 ;; (defmacro forall (space ary/dict/str &rest procs)
 
@@ -508,7 +535,7 @@
 ;;====================================================================
 (defun ps-output (space)
   (output-prolog space)
-  (output-program space)
+  (output-script space)
   (output-epilog space))
 
 (defun output-prolog (space)
@@ -528,7 +555,7 @@
       (dolist (proc procs) (format t "~%~A~%" (gethash proc dict))))))
 
 
-(defun output-program (space)
+(defun output-script (space)
   (format t "~%%%------------------- Script ---------------------~%")
   (princ (with-output-to-string (s)
            (format s "~&~{~A~^~&~}" (reverse (:oprd space))))))
@@ -547,10 +574,9 @@
          (let ((*standard-output* ,s))
            (ps-output ,space))))))
 
-(defparameter *viewer*
-              #+windows           "start"
-              #+(or macos macosx) "open"
-              #+linux             "xdg-open")
+(defparameter *viewer* #+windows           "start"
+                       #+(or macos macosx) "open"
+                       #+linux             "xdg-open")
 
 (defun show-image (ps-file)
   (trivial-shell:shell-command

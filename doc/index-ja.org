@@ -1,4 +1,4 @@
-#### Last Updated : 2012/06/01 19:30:11 tkych
+#### Last Updated : 2012/06/02 11:36:54 tkych
 
 
 ##====================================================================
@@ -12,7 +12,7 @@
 
 *!!!Warning!!!*
 
-*Current version of PreScript is 0.0.06 (experimental alpha).*
+*Current version of PreScript is 0.0.~~ (experimental alpha).*
 
 *Current purpose of PreScript repository is to back up files.*
 
@@ -22,25 +22,13 @@
 * はじめに
 ##--------------------------------------------------------------------
 
+　PreScriptは、Common Lispで画像を生成するためのDSL(または、[[http://www.adobe.com/products/postscript/][PostScript]]インターフェイス)である。
+ざっくり言うと、PreScriptはS式で記述できるPostScriptである。
+ページ記述言語PostScriptは、スタックベース、逆ポーランド記法、チューリング完全なプログラミング言語で、画像を生成するための多数のオペレータを持つ
+(PostScriptは[[http://www.adobe.com/][Adobe Systems Inc.]]の商標)。
 
-大げさに言えば、CommonLisp -> PostScriptコンパイラ。
-平たく言えば、PostScriptインターフェイス for Common Lisp。
-
-ページ記述言語PostScriptは、プリンタ
-
-
-スタックを利用した拡張性
-逆ポーランド記法
-プログラミング言語
-
-しかしながら、PostScriptでコーディングする際は、常にスタックの状態を考慮せねばならず、
-出来上がったPostScriptプログラムは可読性に優れたものとは言えない。
-
-lispの前置記法を後置記法に置き換えれば良いというものではない。
-
-
-PreScript開発の目的は、
-スタックを考慮せずに可読性に優れたコードで画像生成が可能にすることである。
+　PreScriptは、PostScriptコードを生成し、適当なビューアに画像を出力する。
+PostScriptコードの複雑さの原因となっているスタック機構を意識せずに、コードの読み書きができるので、PreScriptでは簡単に望みの画像を生成することができる。
 
 ##--------------------------------------------------------------------
 * インストール
@@ -48,71 +36,60 @@ PreScript開発の目的は、
 
 
 ##--------------------------------------------------------------------
-* 目標
-##--------------------------------------------------------------------
-
-   PostScriptをCommonLispに取り込む。
-
-1. ページ記述言語CommonLisp ::
-   CommonlispにPostScriptの図形描写能力を備わせる。
-
-2. 関数型オブジェクト指向マルチパラダイムPostScript :: 
-   lispの柔軟性、可読性、再利用性、拡張性の利点をPostScriptに与え、プログラムを書きやすくする。
-   スタック操作オペレータを陽に用いずにプログラムが書けるように。
-
-3. CL calculate, PS draw only ::
-   PostScriptの実行時計算をCommonLispに荷わせることで、高速なpsファイルを生成できるようにする。
-   ただし、lisp的に自然なプログラミング方法で、自ずと効率的なpsファイルが生成できるように。
-
-
-実装時、目的1,2,3が同時に成り立たず、選択が必要な場合、
-美、柔軟性、自由度のバランスを十分考慮すること。
-
-
-##--------------------------------------------------------------------
 * PreScriptのゴール
 ##--------------------------------------------------------------------
 
-Common Lispには、画像を生成する機能がない。
-したがって、Lispプログラマが画像を描く際にはLisp以外の別な言語を使用しなければならない。
-その際、しばしば用いられる言語がPostScriptである。
-(例えば、CLtL2のには、数学的関数の挙動振る舞いをプロットするPostScriptコードを生成するCLプログラムが掲載されている)
-ページ記述言語PostScriptは、チューリング完全なプログラミング言語で、
-いわゆるインタプリタ型、かつスタック指向で、画像生成のための多数のオペレータを持つ。
-スタックを活用することで、Lispに匹敵するほどの拡張性を持つ。
-PSプリンタによって使用されている。
+　素のCommon Lispには、画像を生成する機能がない。
+それゆえ、Lispプログラマが画像を描く場合、Common Lisp以外の言語を使う必要がある。
+PostScriptは、そのような際に用いられる言語の一つである。
 
-スタック機構によりサポートされる拡張性が、PostScriptの力の源泉となっている。
-しかしながら、スタック機構の存在は諸刃の剣である。
-なぜなら、プログラマは常に(スタックの内容に依存する)環境を考慮しつつプログラムの読み書きをしなければならないからだ
-(もともとPostScriptは人間が読み書きすることよりも機械が生成することを重視して設計されている)。
-このことをLispに置き換えるなら、
-プログラム実行の過程で刻一刻と変化するグローバル変数の値に依存し、
-すべての関数やマクロの振る舞いが変化するようなものである。
-PostScriptプログラマは常にそのグローバル変数の値を気にしつつ、コードの読み書きをしなければならない。
+　PostScriptには、画像を生成するためのオペレータ、制御構造を司るオペレータ(ifelseやfor, loopなど)等の多数のオペレータがあり、それらを組み合わせることで、非常に緻密で美しい画像を生成できる。
+PostScriptはフォトショップやTexなどのソフトウェアや、多数のレーザープリンタで使用されており、印刷業務の基礎を支えるプログラミング言語である。
 
-PreScriptのゴールは、上述の不便さを解消すること、すなわち、次の3点を達成することである。
+　例えば、 [[http://www.cs.cmu.edu/Groups/AI/html/cltl/cltl2.html][CLtL2]]の339ページから49ページにはPostScriptコードを生成するCLプログラムが掲載されている。
+そのプログラムは、CLの数学的関数(sqrt, sin, arccos, sinhなど)の振る舞いをプロットするもので、その画像は317ページから336ページに載せられている。
 
-1. Common Lispに画像生成機能を備えさせること。
-2. スタックの存在を意識せずに、プログラムの読み書きが可能になるようにすること。
-3. スタック機構が支える拡張性は維持すること。
+　PostScriptはスタックベースの言語であり、スタック機構により得られる(Lispに匹敵するほどの)拡張性は、PostScriptの力の源泉の一つとなっている。
+しかしながら、このスタック機構の存在は諸刃の剣である。
+なぜなら、プログラマがPostScriptを読み書きする際、スタックの内容に依存する環境を常に考慮しなければならないからである。
+PostScriptの設計指針は、プリンター機械の少ない計算資源を最大限活用するためのものであり、人間のプログラマがストレスなくコーディングするためのものではない。
+
+　この状況を理解するためにLispに置き換えてみると、すべての関数やマクロの振る舞いが、ある特定のスペシャル変数の値に依存しており、かつ、このスペシャル変数の値が、計算の実行過程で次々と変化するようなものである。
+プログラマがコードを読み書きする時には、このスペシャル変数の値の変化に注意を向け続ける必要がある。
+
+
+*PreScriptのゴールは、以下の3点を達成することである。*
+
+1. Common Lispで画像生成を可能にすること。
+2. スタック機構の存在を意識せずに、プログラムが読み書きできるようにすること。
+3. スタック機構が支える拡張可能性は維持すること。
 
 --------------------------------------------------------------------
 
-このような試みは過去にも行われている。
+　ちなみに、PreScriptのような試みは過去にも行われている。
 PLisp (PostScript Lisp)は同様の動機、別の設計の基で開発されたコンパイラである。
+
+20年以上前
+
+によるEPS拡張
+
+
 
 違い：
 
 PLispはCLtL1のためCLOS, Package Sytemはない。
 PLispは、PostScriptやLispとは異なる言語として設計されており、
 Lispの制御オペレータ(funcall, apply, function, do, do*, dolist, defunなど)はPLispのオペレータとして再定義されている。
-したがって、素のLispをPLispから使うことはできない。
+したがって、素のLispをPLispで使うことはできない。
 
 PreScriptは、PostScriptやLispとは異なる言語ではなく、埋め込み言語としてLispの拡張になるように設計されている。
 PostScriptオペレータによる画像生成のための操作以外の部分で、素のLispを活用することができる。
 これにより、あらかじめコストのかかる計算をLispに担わせることで、
 PostScriptインタープリタによる計算を極力減らすという方法が可能になる。
+
++ CL calculate, PS draw only
+  PostScriptの実行時計算をCommonLispに荷わせることで、高速なpsファイルを生成できるようにする。
+  ただし、lisp的に自然なプログラミング方法で、自ずと効率的なpsファイルが生成できるように。
 
 
 ##--------------------------------------------------------------------
@@ -543,6 +520,37 @@ PostScript style
 ## (trans-args (moveto 72 (vpos))) => 72 vpos moveto # !!!
 PreScript style
 #+BEGIN_SRC lisp :exports code
+  (ps-view
+   (let ((word #"Typefaces"))
+     (-> (make-space)
+         (def vpos 720)
+         (defproc newline ()
+             (def vpos (sub (vpos) 15))
+           (moveto 72 (vpos)))
+         (defproc print-word (font)
+             (setfont (findfont font) (scalefont 15))
+           (show word)
+           (newline))
+         (print-word $Times-Roman)
+         (print-word $Times-Bold)
+         (print-word $Times-Italic)
+         (print-word $Times-BoldItalic)
+         (newline)
+         (print-word $Helvetica)
+         (print-word $Helvatica-Bold)
+         (print-word $Helvatica-Oblique)
+         (print-word $Helvatica-BoldOblique)
+         (newline)
+         (print-word $Courier)
+         (print-word $Courier-Bold)
+         (print-word $Courier-Oblique)
+         (print-word $Courier-BoldOblique)
+         (newline)
+         (print-word $Symbol)
+         (showpage))))
+#+END_SRC
+
+#+BEGIN_SRC lisp :exports code
 (ps-view
   (def vpos 720)
   (def wordy #"Typefaces")
@@ -568,7 +576,6 @@ PreScript style
   (newline)
   (printword $Symbol)
   (showpage))
-
 #+END_SRC
 
 ###--------------------------------

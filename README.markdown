@@ -1,8 +1,8 @@
-Last Updated : 2012/06/01 19:49:02 tkych
+Last Updated : 2012/06/02 11:39:21 tkych
 
 *!!!Warning!!!*
 
-*Current version of PreScript is 0.0.08 (experimental alpha).*
+*Current version of PreScript is 0.0.~~ (experimental alpha).*
 
 *Current purpose of PreScript repository is to back up files.*
 
