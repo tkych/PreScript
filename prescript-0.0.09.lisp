@@ -1,5 +1,11 @@
-;;;; Last Updated : 2012/06/02 10:05:34 tkych
+;;;; Last Updated : 2012/06/02 15:33:18 tkych
 
+
+;; !!!Warning!!!
+;; Current version of PreScript is 0.0.~~ (experimental alpha).
+;; Current purpose of PreScript repository is to back up files.
+;; Current status of this code is a mere devlopment-note.
+ 
 
 ;;--------------------------------------------------------------------
 ;; Memo
@@ -70,7 +76,7 @@
 (defun make-space ()
   (make-inst 'user-space
              ))
-
+  
 (defun copy-space (space &rest copy-slots)
   (if (not copy-slots)
       (with-slots (vars procs oprd dict) space
@@ -162,7 +168,8 @@
 ;;====================================================================
 ;; STRING:  #"string" -> "(string)"
 ;; FONT:    $Times-Roman -> "/Times-Roman"
-;; ARRAY:   
+;; ARRAY:   ['(1 1) 'ss "ahaha" (moveto 2 (neg 3))]
+;;          -> []
 ;; DICTIONARY: 
 
 ;;--------------------------------------

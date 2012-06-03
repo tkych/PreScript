@@ -1,4 +1,4 @@
-Last Updated : 2012/06/02 11:39:21 tkych
+Last Updated : 2012/06/03 23:50:18 tkych
 
 *!!!Warning!!!*
 
@@ -18,7 +18,7 @@ Introduction
 
 PreScript is a DSL for generating an image in Common Lisp (or PostScript interface).
 
-Roughly speaking, PreScript is [PostScript][] represented as S-expressions (PostScript is a registered trademark of Adobe Systems Inc.).
+Roughly speaking, PreScript is [PostScript][] represented as S-expressions (PostScript is a registered trademark of [Adobe Systems Inc.][]).
 PostScript is stack-based, postfix notation style, Turing-complete programming language with numerous operators for image generation.
 PreScript generates PostScript code, and outputs the image to the appropriate viewer.
 In PreScript, we can easily write code without having to worry about stack mechanism that is the cause of the complexity of the PostScript code.
@@ -27,6 +27,7 @@ For further details, please see index (Under Translation) or index-ja (Japanese)
 
 
   [PostScript]: http://www.adobe.com/products/postscript/
+  [Adobe Systems Inc.]: http://www.adobe.com/
 
 
 The Goal of PreScript
@@ -66,12 +67,13 @@ Imaging model is similar to PostScript.
 ### User-Space ###
 
 An user space object is an abstraction of a canvas with infinite size.
-Points in the user space is specified by the value of the two-dimensional Cartesian coordinate with the origin at the lower left.
+A position in the user space is specified by the value of the two-dimensional Cartesian coordinate with the origin at the lower left.
 
 ### Operators ###
 
 An operator is an abstraction of the behavior of the painter when drawing a picture on the canvas.
 A name of the operator is equivalent to the PostScript name of the operator.
+The name of operator that will collide with name of Lisp operator is put on the 'y' to the end (for example, `if` -> `ify`)
 All operators is closed as an operation on the user space.
 
 ### Output ###
