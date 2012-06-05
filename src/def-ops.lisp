@@ -1,4 +1,4 @@
-;;;; Last Updated : 2012/06/05 17:40:29 tkych
+;;;; Last Updated : 2012/06/05 18:32:05 tkych
 
 
 ;; !!!Warning!!!
@@ -35,8 +35,8 @@
                          (number (rec xs op (cons x args) result))
                          (list   (rec xs op nil
                                       (rec x op args result)))))))))
-    (mapcon (^ (x) (nreverse (rec x nil nil nil)))
-            forms)))
+    (mappend (^ (x) (nreverse (rec x nil nil nil)))
+             forms)))
 
 (defmacro make-var-body (space name body)
   (with-gensyms (s tmp-space)
@@ -87,9 +87,9 @@
                         body)))
          (format ,s "/~(~A~) { %def" ',name)
          ,(when args
-            `(format ,s "~&~{ /~A exch def~}" ',(nreverse args)))
+            `(format ,s "~&~{ /~A exch def~}" ',(reverse args)))
          (format ,s "~&~{  ~A~^~&~} } bind def" ;for early name binding
-                 (nreverse (:oprd ,tmp-space)))))))
+                 (reverse (:oprd ,tmp-space)))))))
 
 (defmacro defun-proc (proc-name proc-key)
   `(defun ,proc-name (space &rest args)
@@ -106,8 +106,8 @@
 (defmacro defproc (space name (&rest args) &body body)
   (let ((proc-key (as-key name)))
     (with-gensyms (s proc-body)
-      `(let ((,s ,space) ;for (-> (make-space) (defproc name ...))
-             (,proc-body (make-proc-body ,s ,name ,args ,body)))
+      `(let* ((,s ,space) ;for (-> (make-space) (defproc name ...))
+              (,proc-body (make-proc-body ,s ,name ,args ,body)))
          (push-proc ,proc-key ,proc-body ,s)
          (defun-proc ,name ,proc-key)
          (values ,s ',name)))))
