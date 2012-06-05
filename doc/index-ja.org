@@ -1,8 +1,8 @@
-#### Last Updated : 2012/06/04 00:04:19 tkych
+#### Last Updated : 2012/06/05 17:18:28 tkych
 
 
 ##====================================================================
-#+TITLE:  PreScript: Lispized PostScript
+#+TITLE:  PreScript: PostScript Interface for Common Lisp
 #+AUTHOR: Takaya OCHIAI
 #+EMAIL:  tkych.repl@gmail.com
 #+LANGUAGE: ja
@@ -108,36 +108,40 @@ PostScriptインタープリタによる計算を極力減らすという方法�
 
 PostScriptシンタックスとPostScriptイメージングモデルは互いに独立している。
 一方を採用することが、必ずしも他方も採用することにつながるものではない。
-PreScriptはPostScriptイメージングモデルを採用するが、シンタックスは独自のものを採用する。
+PreScriptはPostScriptイメージングモデルを採用するが、シンタックスはLispの自然な拡張になるものを採用する。
 ただし、オペレータ名はPostScriptに準ずるものとする。
-
 
 
 ##--------------------------------------------------------------------
 ** イメージングモデル
 ##--------------------------------------------------------------------
 
-ユーザースペースのグラフィック状態をドローオペレータにより操作し絵を描き、
-ユーザースペースにアウトプットオペレータを作用させ画像を出力する。
+1. ユーザースペースを生成する。 =(make-space)=
+2. ドローオペレータによってユーザスペース内に抽象的画像を描く。ex. =(MOVETO space 1 2)=, =(SHOW space)=
+3. アウトプットオペレータによってユーザースペース内に描かれた抽象的画像を、現実に出力する。 =(PS-OUTPUT space)=, =(PS-VIEW space)=
 
 *** ユーザースペース
 
-ユーザースペースはキャンバスを抽象化したオブジェクト。
-無限の広さを持つ。
-左下を原点とする2次元デカルト座標の値により、ユーザースペース中の点を指定する。
-ユーザースペースはグラフィック状態と呼ばれる状態を持つ。
-グラフィック状態は次の??(未定)つの値により定まる。
+ユーザースペースは、無限の広さを持つキャンバスを抽象化したオブジェクト。
+ユーザースペース内の位置は、左下を原点とする2次元デカルト座標の値で指定される。
+ユーザースペースはいくつかの内部状態を持つ。
+内部状態は次の??(未定)つの値により定まる。
 1. ポイント
 2. CTM
 3. フォント
 4. 色
 
+ドローオペレータによってこれらの内部状態を操作することで抽象的画像を生成する。
 
 *** ドローオペレータ
 
 ドローオペレータは画家がキャンバスに絵を描く際の動作を抽象化した操作。
 操作名はPostScriptオペレータに準ずる。
-すべてのドローオペレータは、ユーザースペース上の演算として閉じている。
+ただし、組み込みのLispオペレータと名前が衝突するものには、末尾に'y'を付加する (例、if -> ify)。
+すべてのドローオペレータは、ユーザースペース上の演算として閉じるように定義される。
+ =(DRAWING-OP space &rest args) => space= .
+
+ドローオペレータの例
 
 - 筆をキャンバスに置く: newpath
 - 線を下書きする: パスオペレータ
@@ -155,8 +159,8 @@ showpageに対応する現実の動作は何か？
 *** アウトプットオペレータ
 
 アウトプットオペレータは、画家が絵を見る動作を抽象化した操作。
-現実世界では、絵を描く動作と絵を見る動作を分けて考えることはあまりない。
-しかし、コンピュータ上で絵を描くには両者の間にコードの変換(コンパイル)が必要なので両者は明確に分かれる。
+現実世界では、絵を描く動作と絵を見る動作を分けて考える必要はない。
+しかし、コンピュータ上で絵を描くには両者の間にコードの変換(コンパイル)が必要なので、両者を分けて考える。
 
 - ps-output: psコードを標準出力に表示する
 - ps-view: 画像をgvに出力する
@@ -164,6 +168,7 @@ showpageに対応する現実の動作は何か？
 
 
 Clojureマクロ =->= を用いることでPreScriptコードは簡潔になる。
+-> は命令型スタイルのコードを関数型スタイルに変換する。
 #+BEGIN_SRC lisp :exports code
   (defmacro -> (x &rest form)
     "From clojure. Inserts x as the second item in the first form,
@@ -186,17 +191,14 @@ PreScriptコードはより簡潔になるだろうか？
 
 
 ##--------------------------------------------------------------------
-** PS実行モデル
+** ユーザーインターフェイス
 ##--------------------------------------------------------------------
 
-user-space
-
-ディクショナリ
 
 スタックは陽に用いない。
 ただし、用いることもできるように。
 
-手続き
+引数を持てる手続きを導入
 
 #+BEGIN_SRC lisp :exports code
 ;; defop: make ps op, in prescript (all user-space)
@@ -232,7 +234,6 @@ stringwidth等による計算は、PreScriptコードの実行過程でGhostScri
 ##====================================================================
 * Examples in Blue Book
 ##====================================================================
-
 
 ##====================================================================
 ** Ch.3 Beginning Graphics
@@ -324,16 +325,12 @@ And more
 ##--------------------------------------------------------------------
 *** Example 4.1, p.30
 ##--------------------------------------------------------------------
-PostScript style
 
+PostScript style
 #+BEGIN_SRC lisp :exports code
   (ps-view
    (-> (make-space)
-       (defproc box ()
-         (rlineto 72 0)
-         (rlineto 0 72)
-         (rlineto -72 0)
-         (closepath))
+       (def box {(rlineto 72 0) (rlineto 0 72) (rlineto -72 0) (closepath)})
        (newpath) (moveto 252 324) (box) (fill-gray  0)
        (newpath) (moveto 270 360) (box) (fill-gray .4)
        (newpath) (moveto 288 396) (box) (fill-gray .8)
@@ -342,7 +339,6 @@ PostScript style
 
 ##---------------------------------
 PreScript style
-
 #+BEGIN_SRC lisp :exports code
   (ps-view
    (-> (make-space)
@@ -528,38 +524,36 @@ PreScript style
 ##--------------------------------------------------------------------
 PostScript style
 
+
 ## (moveto 72 (vpos)) => vpos 72 moveto # !!!
 ## (trans-args (moveto 72 (vpos))) => 72 vpos moveto # !!!
 PreScript style
 #+BEGIN_SRC lisp :exports code
   (ps-view
-   (let ((word #"Typefaces"))
-     (-> (make-space)
-         (def vpos 720)
-         (defproc newline ()
-             (def vpos (sub (vpos) 15))
-           (moveto 72 (vpos)))
-         (defproc print-word (font)
-             (setfont (findfont font) (scalefont 15))
-           (show word)
-           (newline))
-         (print-word $Times-Roman)
-         (print-word $Times-Bold)
-         (print-word $Times-Italic)
-         (print-word $Times-BoldItalic)
-         (newline)
-         (print-word $Helvetica)
-         (print-word $Helvatica-Bold)
-         (print-word $Helvatica-Oblique)
-         (print-word $Helvatica-BoldOblique)
-         (newline)
-         (print-word $Courier)
-         (print-word $Courier-Bold)
-         (print-word $Courier-Oblique)
-         (print-word $Courier-BoldOblique)
-         (newline)
-         (print-word $Symbol)
-         (showpage))))
+   (-> (make-space)
+       (def vpos 720)
+       (def word #"Typefaces")
+       (def choose-font {(setfont (findfont (scalefont 15)))})
+       (def newline {(def vpos (sub (vpos) 15))
+         (moveto 72 (vpos))})
+       (defproc print-word {(choose-font) (show (word)) (newline)})
+       (print-word $Times-Roman)
+       (print-word $Times-Bold)
+       (print-word $Times-Italic)
+       (print-word $Times-BoldItalic)
+       (newline)
+       (print-word $Helvetica)
+       (print-word $Helvatica-Bold)
+       (print-word $Helvatica-Oblique)
+       (print-word $Helvatica-BoldOblique)
+       (newline)
+       (print-word $Courier)
+       (print-word $Courier-Bold)
+       (print-word $Courier-Oblique)
+       (print-word $Courier-BoldOblique)
+       (newline)
+       (print-word $Symbol)
+       (showpage)))
 #+END_SRC
 
 #+BEGIN_SRC lisp :exports code
@@ -3251,6 +3245,15 @@ CL calculates, PS only draws.
 ##--------------------------------------------------------------------
 * Memo
 ##--------------------------------------------------------------------
+
++ 状態を持つオブジェクトを扱うソフトウェアなので、命令型スタイルのコードの方が簡潔になる??
+あまり関係ない
+'->'
+
++ ps opの実装
+
++ ps op でスタックが陽に現れないユーティリティを定義
+  + スタックを陽に用いるパターンを収集する 
 
 + //はletで
 
