@@ -1,4 +1,4 @@
-#### Last Updated : 2012/06/06 13:34:30 tkych
+#### Last Updated : 2012/06/06 20:15:31 tkych
 
 
 ##====================================================================
@@ -25,8 +25,8 @@
 
 　PreScriptは、Common Lispで画像を生成するためのDSLである。
 ざっくり言うと、PreScriptはS式で記述できる[[http://www.adobe.com/products/postscript/][PostScript]]である。
-さっくり言うと、PreScriptはPostScriptに抽象の薄皮を被せたのものである。
-ページ記述言語PostScriptは、スタックベース、逆ポーランド記法、チューリングマシンと同等な計算能力を持つプログラミング言語で、画像を生成するための多数のオペレータを持つ
+さっくり言うと、PreScriptはPostScriptに抽象の薄皮を被せたものである。
+ページ記述言語PostScriptは、スタックを基礎とする、逆ポーランド記法の、チューリングマシンと同等の計算能力を持つ（!!証明!!）、プログラミング言語で、画像を生成するための多数のオペレータを持つ
 (PostScriptは[[http://www.adobe.com/][Adobe Systems Inc.]]の登録商標)。
 
 　PreScriptは、PostScriptコードを生成し、適当なビューアに画像を出力する。
@@ -200,7 +200,8 @@ stringwidth等による計算は、PreScriptコードの実行過程でGhostScri
 計算はなるべくLispで行い、生成されたPostScriptコードを実行するインタープリタ(ビューア)は画像描写のみに専念できるように。
 
 
-引数が持てる手続きが定義できるdefprocを導入する。
+引数が持てる手続きを定義するdefprocを導入する。
+!!! add local-dict, local-state
 #+BEGIN_SRC lisp :exports code
 ;; defproc: make ps proc, in user-space: s
 (defproc s box (dx dy)
@@ -227,6 +228,9 @@ stringwidth等による計算は、PreScriptコードの実行過程でGhostScri
       (closepath)))
 #+END_SRC
 
+実行配列を{,}によって生成することができるが、あまり推奨しない。
+制御オペレータで生成される暗黙の実行配列との一貫性のため。
+(def name { . body}) -> (defproc name . body)
 
 
 ##====================================================================
@@ -354,7 +358,7 @@ PreScript style
        (showpage)))
 #+END_SRC
 
-defprocは下の様に用いることもできる。
+->を用いず、以下の様にコードを書くこともできる。
 #+BEGIN_SRC lisp :exports code
   (setf s (make-space))
   
@@ -367,12 +371,13 @@ defprocは下の様に用いることもできる。
     (closepath)
     (fill-gray gray-scale))
   
-  (ps-view
-   (-> s
-       (box-at 252 324 0)
-       (box-at 270 360 .4)
-       (box-at 288 396 .8)
-       (showpage)))
+  (box-at s 252 324 0)
+  (box-at s 270 360 .4)
+  (box-at s 288 396 .8)
+  
+  (showpage s)
+  
+  (ps-view s)
 #+END_SRC
 
 上の2つのPreScriptコードは同じPostScriptコードを生成する(下のPSコード)
@@ -658,8 +663,7 @@ mi
 ##--------------------------------------------------------------------
 *** Example 6.1, p.49 [3 Box]
 ##--------------------------------------------------------------------
-#PostScript style
-
+PostScript style
 #+BEGIN_SRC lisp :exports code
   (defop set-font (font scale)
     (findfont font)
@@ -774,10 +778,8 @@ mi
 
 
 ##--------------------------------------------------------------------
-*** Example 6., p.4
+*** Example 6.3, p.55 [Circles]
 ##--------------------------------------------------------------------
-
-
 #+BEGIN_SRC lisp :exports code
   (ps-view
    (-> (make-space)
@@ -796,7 +798,7 @@ PreScript style
 
 
 ##--------------------------------------------------------------------
-*** Example 6., p.58, OMAHA
+*** Example 6.4, p.58 [OMAHA]
 ##--------------------------------------------------------------------
 #PostScript style
 #+BEGIN_SRC lisp :exports code
@@ -1020,18 +1022,19 @@ mi
 ##--------------------------------------------------------------------
 *** Example 7.4, p.69-70 [Line of Circle]
 ##--------------------------------------------------------------------
-### 
+
+mi
 #+BEGIN_SRC lisp :exports code
   (ps-view
    (-> (make-space)
        (def pagewidth (mul 8.5 72))
-       (def doCircle {(stroke (arc (xpos) (ypos) (radius) 0 360))}) #!!!
+       (def doCircle {(stroke (arc (xpos) (ypos) (radius) 0 360))}) ;!!!
        (def inc-x {(def xpos (add (xpos) (radius)))})
        (def lineofcircle {(def ypos (exch))
             (def radius (exch))
             (def xpos 0)
             (loopy (ifelse (le (xpos) (pagewidth))
-                           (inc-x (doCircle)) #!!!
+                           (inc-x (doCircle)) ;!!!
                            (exit)))})
        (lineofcircle 10 400)
        (lineofcircle 30 400)
@@ -1040,6 +1043,7 @@ mi
 #+END_SRC
 
 ##---------------------------------
+mi
 #+BEGIN_SRC lisp :exports code
 (defun line-circles (x-pos y-pos radius)
   (let ((page-width (* 8.5 72)))
@@ -1056,6 +1060,7 @@ mi
 #+END_SRC
 
 ##---------------------------------
+mi
 #+BEGIN_SRC lisp :exports code
 (defmacro setfy (old-val new-val)
   (if (listp old-val)
@@ -1093,25 +1098,28 @@ mi
 *** Example 7.5, p.71 [Factorial]
 ##--------------------------------------------------------------------
 #+BEGIN_SRC lisp :exports code
-(ps-view
-  (def LM 72)
-  (set-font $Times-Roman 15)
-  (def nstr (stringy 7))
-  (def newline {(sub (currentpoint) 16)
-                (exch) (popy)
-                (LM) (exch)
-                (moveto)})
-  (def factorial {(ify (gt (dup) 1)
-                       (mul (factorial (sub 1 (dup)))))})
-  (def prt-n {(show (cvs (nstr)))})
-  (def prtFactorial {(prt-n (dup))
-                     (show "! = ")
-                     (prt-n (factorial))
-                     (newline)})
-  (moveto (LM) 600)
-  (fory 1 1 10
-        (prtFactorial))
-  (showpage))
+  (ps-view
+   (-> (make-space)
+       (def factorial) ;!!!!
+       (def LM 72)
+       (set-font $Times-Roman 15)
+       (def nstr (stringy 7))
+       (def newline {(sub (currentpoint) 16)
+            (exch) (popy)
+            (LM) (exch)
+            (moveto)})
+       (def factorial {(ify (gt (dup) 1)
+                            (mul (factorial (sub 1 (dup)))))}) ;!!!!
+       (def prt-n {(show (cvs (nstr)))})
+       (def prtFactorial {(prt-n (dup))
+            (show #"! = ")
+            (prt-n (factorial))
+            (newline)})
+       (LM)              ;!!!!
+       (moveto 600)
+       (fory 1 1 10
+             (prtFactorial))
+       (showpage)))
 #+END_SRC
 
 ##---------------------------------
@@ -1121,7 +1129,7 @@ mi
 #+BEGIN_SRC lisp :exports code
 (defun fact (n)
   (labels ((rec (n acc)
-             (if (= n 0)
+             (if (<= n 0)
                  acc
                  (rec (1- n) (* n acc)))))
     (rec n 1)))
@@ -1142,25 +1150,30 @@ mi
 *** Example 7.6, p.73-5 [Arrow Tree]
 ##--------------------------------------------------------------------
 #+BEGIN_SRC lisp :exports code
-(ps-view
-  (def depth 0)
-  (def maxdepth 10)
-  (def down {(def depth (add (depth) 1))})
-  (def up {(def depth (sub (depth) 1))})
-  (def DoLine {(rlineto 0 144)
-               (currentpoint)
-               (stroke) (translate) (moveto 0 0)})
-  (def FractArrow {(local-gstate
-                     (scale .7 .7)
-                     (setlinewidth 10)
-                     (down) (DoLine)
-                     (ify (le (depth) (maxdepth))
-                          ((rotate  135) (FractArrow)
-                           (rotate -270) (FractArrow)))
-                     (up))})
-  (moveto 300 400)
-  (stroke (FractArrow))
-  (showpage))
+  (ps-view
+   (-> (make-space)
+       (def depth 0)
+       (def maxdepth 10)
+       (def down {(def depth (add (depth) 1))})
+       (def up {(def depth (sub (depth) 1))})
+       (def DoLine {
+         (rlineto 0 144)
+         (currentpoint)
+         (stroke) (translate) (moveto 0 0)})
+       (def FractArrow {
+         (gsave)
+         (scale .7 .7)
+         (setlinewidth 10)
+         (down) (DoLine)
+         (ify (le (depth) (maxdepth))
+              ((rotate  135) (FractArrow)
+               (rotate -270) (FractArrow)))
+         (up)
+         (grestore)})
+       (moveto 300 400)
+       (FractArrow)
+       (stroke)
+       (showpage)))
 #+END_SRC
 
 
@@ -2998,95 +3011,5 @@ CL calculates, PS only draws.
 + 最適化
   + 生成されるPSコードのPostScriptとしての効率の最適化
   + (必要なら)Lispコードとしての効率の最適化
-
-
-##--------------------------------------------------------------------
-* Memo
-##--------------------------------------------------------------------
-
-+ 状態を持つオブジェクトを扱うソフトウェアなので、命令型スタイルのコードの方が簡潔になる??
-あまり関係ない
-'->'
-
-+ ps opの実装
-
-+ ps op でスタックが陽に現れないユーティリティを定義
-  + スタックを陽に用いるパターンを収集する 
-
-+ //はletで
-
-+ #"" -> ???
-
-+ <hex bytes>
-
-+ escape: \), \\
-
-#+BEGIN_SRC lisp :exports code
-  (ps-view
-   (-> (make-space)
-       (fory 0 18 (mul 18 24)
-             (moveto (dup) 0)
-             (lineto 600))
-       (stroke)
-       (fory 0 18 (mul 18 36)
-             (moveto (dup) (exch 0))
-             (lineto (exch 436)))
-       (stroke)))
-
-  (ps-view
-   (-> (make-space)
-       (fory i 0 18 (mul 18 24)
-             (moveto i 0)
-             (lineto i 600))
-       (stroke)
-       (fory j 0 18 (mul 18 36)
-             (moveto 0 j)
-             (lineto 436 j))
-       (stroke)))
-  
-  % 18-pt spacing, 24 lines
-  0 18 18 24 mul { %for
-          dup 0 moveto
-          600 lineto
-  } for stroke
-  % 18-pt spacing, 36 lines
-  0 18 18 36 mul { %for
-          dup 0 exch moveto
-          436 exch lineto
-  } for stroke
-#+END_SRC
-
-#+BEGIN_SRC ps :exports code
-  % dictionary template:
-  /mydict 24 dict def
-  mydict begin
-  end %mydict
-
-  % procedure template:
-  /newline                              % - newline -
-  { %def
-           % this procedure will simulate “newline”
-           % on a line printer
-  } bind def
-  % conditional template:
-  currentgray 0.5 gt { %ifelse
-  }{ %else
-  } ifelse
-  % loop template:
-  0 10 360 { %for
-  } for
-  % combination template: 
-  /mydict 24 dict def
-  mydict begin
-           /newline                     % - newline -
-           { %def
-                  currentpoint pop 550 gt { %ifelse
-                  }{ %else
-                           0 10 360 { %for
-                           } for
-                  } ifelse
-           } bind def
-  end
-#+END_SRC
 
 ##====================================================================

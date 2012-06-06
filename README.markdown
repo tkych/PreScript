@@ -1,4 +1,4 @@
-Last Updated : 2012/06/03 23:50:18 tkych
+Last Updated : 2012/06/06 16:56:17 tkych
 
 *!!!Warning!!!*
 
@@ -9,14 +9,14 @@ Last Updated : 2012/06/03 23:50:18 tkych
 *Current status of this document is a mere devlopment-memo.*
 
 
-PreScript: Lispized PostScript
-==============================
+PreScript: PostScript Interface for Common Lisp
+===============================================
 
 
 Introduction
 ------------
 
-PreScript is a DSL for generating an image in Common Lisp (or PostScript interface).
+PreScript is Graphic & Typsetting DSL (or PostScript Interface) for Common Lisp.
 
 Roughly speaking, PreScript is [PostScript][] represented as S-expressions (PostScript is a registered trademark of [Adobe Systems Inc.][]).
 PostScript is stack-based, postfix notation style, Turing-complete programming language with numerous operators for image generation.
