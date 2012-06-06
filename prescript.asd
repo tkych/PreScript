@@ -1,4 +1,4 @@
-;;;; Last Updated : 2012/06/05 17:02:56 tkych
+;;;; Last Updated : 2012/06/06 20:22:34 tkych
 
 
 ;; !!!Warning!!!
@@ -13,7 +13,7 @@
 ;; PreScript/
 ;;   README.markdown
 ;;   prescript.asd
-;;   in-package.lisp
+;;   internal-package.lisp
 ;;   api-package.lisp
 ;;   cl-utils.lisp
 ;;   src/
@@ -23,7 +23,7 @@
 ;;     control-ops.lisp
 ;;     basic-obj.lisp
 ;;     output.lisp
-;;     prescript-utils.lisp
+;;     ps-utils.lisp
 ;;   doc/
 ;;     index.org
 ;;     index.html
@@ -47,7 +47,7 @@
 It requires the PostScript Interpreter (http://www)."
   :depends-on (:cl-ppcre :trivial-shell)
   :serial t
-  :components (;(:file "in-package")
+  :components (;(:file "internal-package")
                (:file "cl-utils")
                (:module "src"
                         :components ((:file "space")
@@ -56,7 +56,7 @@ It requires the PostScript Interpreter (http://www)."
                                      (:file "control-ops")
                                      (:file "basic-objs")
                                      (:file "output")
-                                     (:file "prescript-utils")
+                                     (:file "ps-utils")
                                      ))
                ;(:file "api-package")
                ))
