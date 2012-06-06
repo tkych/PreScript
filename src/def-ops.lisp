@@ -1,4 +1,4 @@
-;;;; Last Updated : 2012/06/05 18:32:05 tkych
+;;;; Last Updated : 2012/06/06 12:55:05 tkych
 
 
 ;; !!!Warning!!!
@@ -24,13 +24,20 @@
 (defun trans-args (forms)
   (labels ((rec (form op args result)
              (if (null form)
-                 (cons (cons (if op op 'any) (nreverse args))
-                       result)
+                 (cons (cons op (nreverse args)) result)
                  (if (atom form)        ;for (trans-args '(2))
-                     (cons (list 'any form) result)
+                     (cons `(any ,form) result)
                      (dbind (x . xs) form
                        (etypecase x
-                         (symbol (rec xs x args result))
+                         (symbol
+                          (case x
+                            (def (rec (append1 (cdr xs) "def")
+                                      'any
+                                      (cons (format nil "/~A" (1st xs)) args)
+                                      result))
+                            ((ify ifelse loopy repeat fory forall)
+                             (cons form result))
+                            (t (rec xs x args result))))
                          (string (rec xs op (cons x args) result))
                          (number (rec xs op (cons x args) result))
                          (list   (rec xs op nil
@@ -39,11 +46,11 @@
              forms)))
 
 (defmacro make-var-body (space name body)
-  (with-gensyms (s tmp-space)
-    `(with-output-to-string (,s)
+  (with-gensyms (stream tmp-space)
+    `(with-output-to-string (,stream)
        (let ((,tmp-space (copy-space ,space :oprd nil :dict nil)))
          (-> ,tmp-space ,@(trans-args body))
-         (format ,s "~&/~A~{ ~A~^~&~} def" ',name
+         (format ,stream "~&/~A~{ ~A~^~&~} def" ',name
                  (nreverse (:oprd ,tmp-space)))))))
 
 (defmacro defun-var (var-name var-key)
@@ -77,18 +84,18 @@
 
 ;; + local dict
 (defmacro make-proc-body (space name args body)
-  (with-gensyms (s tmp-space)
-    `(with-output-to-string (,s)
+  (with-gensyms (stream tmp-space)
+    `(with-output-to-string (,stream)
        (let ((,tmp-space (copy-space ,space :oprd nil :dict nil)))
          (-> ,tmp-space
              ,@(trans-args
                 (sublis (loop :for arg :in args :collect
                               (cons arg (prin1-to-string arg)))
                         body)))
-         (format ,s "/~(~A~) { %def" ',name)
+         (format ,stream "/~(~A~) { %def" ',name)
          ,(when args
-            `(format ,s "~&~{ /~A exch def~}" ',(reverse args)))
-         (format ,s "~&~{  ~A~^~&~} } bind def" ;for early name binding
+            `(format ,stream "~&~{ /~A exch def~}" ',(reverse args)))
+         (format ,stream "~&~{  ~A~^~&~} } bind def" ;early name binding
                  (reverse (:oprd ,tmp-space)))))))
 
 (defmacro defun-proc (proc-name proc-key)

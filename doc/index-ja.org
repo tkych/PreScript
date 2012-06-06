@@ -1,4 +1,4 @@
-#### Last Updated : 2012/06/05 17:18:28 tkych
+#### Last Updated : 2012/06/06 13:34:30 tkych
 
 
 ##====================================================================
@@ -26,11 +26,19 @@
 　PreScriptは、Common Lispで画像を生成するためのDSLである。
 ざっくり言うと、PreScriptはS式で記述できる[[http://www.adobe.com/products/postscript/][PostScript]]である。
 さっくり言うと、PreScriptはPostScriptに抽象の薄皮を被せたのものである。
-ページ記述言語PostScriptは、スタックベース、逆ポーランド記法、チューリング完全なプログラミング言語で、画像を生成するための多数のオペレータを持つ
+ページ記述言語PostScriptは、スタックベース、逆ポーランド記法、チューリングマシンと同等な計算能力を持つプログラミング言語で、画像を生成するための多数のオペレータを持つ
 (PostScriptは[[http://www.adobe.com/][Adobe Systems Inc.]]の登録商標)。
 
 　PreScriptは、PostScriptコードを生成し、適当なビューアに画像を出力する。
 PostScriptコードの複雑さの原因となっているスタック機構を意識せずに、コードの読み書きができるので、PreScriptでは簡単に望みの画像を生成することができる。
+
+
+　PreScriptは、MITライセンスの元で配布されている。
+したがって、基本的に、望み通り自由に使用できるはずである。
+また、作者はPreScriptの使用等に関して生じた、いかなる不利益、不法行為等について、一切責任を負わない。
+ライセンスの正確な文言は、ソースコードのヘッダーに掲載されている。
+
+
 
 ##--------------------------------------------------------------------
 * ダウンロード & インストール
@@ -61,12 +69,12 @@ PostScriptは、Texで画像を取り込む際にしばしば用いられる(MET
 さらに、PostScriptはAdobe Photoshopなどのソフトウェアや、多数のプリンタで使用されており、印刷業務の基盤を支えるプログラミング言語である。
 
 　例えば、 [[http://www.cs.cmu.edu/Groups/AI/html/cltl/cltl2.html][CLtL2]]の339ページから49ページにはPostScriptコードを生成するCLプログラムが掲載されている。
-そのプログラムは、CLの数学的関数(sqrt, sin, arccos, sinhなど)の振る舞いをプロットするもので、その画像は317ページから336ページに載せられている。
+そのプログラムは、CLの数学的関数(sqrt, sin, arccos, sinhなど)の振る舞いをプロットするもので、その画像は317ページから336ページに掲載されている。
 
 　PostScriptはスタックを基礎とする言語であり、スタック機構により得られる(Lispに匹敵するほどの)拡張性は、PostScriptの力の源泉の一つとなっている。
 しかしながら、このスタック機構の存在は諸刃の剣である。
-なぜなら、プログラマがPostScriptを読み書きする際、スタックの内容に依存する環境を常に考慮し続ければならないからである。
-PostScriptの設計指針は、プリンター機械の少ない計算資源を最大限活用することを重視するものであり、人間のプログラマがストレスなくコーディングすることにはあまり重きを置いていない。
+なぜなら、プログラマがPostScriptを読み書きする際、スタックの内容に依存する環境を常に考慮し続ける必要があるからである。
+PostScriptの設計指針で重視されているものは、プリンター機械の少ない計算資源を最大限活用することであり、人間のプログラマがストレスなくコーディングすることではない。
 
 　この状況を理解するためにLispに置き換えてみると、すべての関数やマクロの振る舞いが、ある特定のスペシャル変数の値に依存しており、かつ、このスペシャル変数の値が、計算の実行過程で次々に変化するようなものである。
 プログラマがコードを読み書きする時には、このスペシャル変数の値の変化に注意を向け続ける必要がある。
@@ -74,36 +82,20 @@ PostScriptの設計指針は、プリンター機械の少ない計算資源を�
 
 　上述の不便さを少しでも改善することが、PreScript開発の動機である。
 したがって、
-*PreScriptのゴールは、以下の3点を達成することである。*
+*PreScriptのゴールは、以下の3点を達成することである。* [fn:plisp]
 
-1. Common Lispで画像生成を可能にすること。
+1. Common Lispで画像を生成できるようにすること。
 2. スタック機構の存在を意識せずに、プログラムが読み書きできるようにすること。
 3. スタック機構が支える拡張可能性は維持すること。
 
---------------------------------------------------------------------
-
-　ちなみに、PreScriptと同様の試みは過去にも行われている。
-PLisp (PostScript Lisp)は同様の動機、別の設計の基で開発されたコンパイラである。
-
-
-Philip DorrellによるEPS拡張
-
-
-
-違い：
-
-PLisp(1987)はCLtL1のためCLOS, Package Sytemはない。
+[fn:plisp]
+PreScriptと同様の試みは過去にも行われている。
+1987年にJohn Petersonによって、PLisp (PostScript Lisp)が開発されている (その後2004年にPhilip DorrellによってEPSファイルに関する拡張がなされた)。
 PLispは、PostScriptやLispとは異なる言語として設計されており、
 Lispの制御オペレータ(funcall, apply, function, do, do*, dolist, defunなど)はPLispのオペレータとして再定義されている。
-したがって、素のLispをPLispから呼び出しで使用することはむずかしい。
-
-PreScriptは、PostScriptやLispとは異なる言語ではなく、埋め込み言語としてLispの拡張になるように設計されている。
-PostScriptオペレータによる画像生成のための操作以外の部分で、素のLispを活用することができる。
-これにより、あらかじめコストのかかる計算をLispに担わせることで、
-PostScriptインタープリタによる計算を極力減らすという方法が可能になる。
 
 ##--------------------------------------------------------------------
-* PreScriptの設計指針
+* ユーザーインターフェイス
 ##--------------------------------------------------------------------
 
 PostScriptシンタックスとPostScriptイメージングモデルは互いに独立している。
@@ -138,7 +130,7 @@ PreScriptはPostScriptイメージングモデルを採用するが、シンタ�
 ドローオペレータは画家がキャンバスに絵を描く際の動作を抽象化した操作。
 操作名はPostScriptオペレータに準ずる。
 ただし、組み込みのLispオペレータと名前が衝突するものには、末尾に'y'を付加する (例、if -> ify)。
-すべてのドローオペレータは、ユーザースペース上の演算として閉じるように定義される。
+すべてのドローオペレータは、ユーザースペース集合上の演算として閉じるように定義される。
  =(DRAWING-OP space &rest args) => space= .
 
 ドローオペレータの例
@@ -191,14 +183,33 @@ PreScriptコードはより簡潔になるだろうか？
 
 
 ##--------------------------------------------------------------------
-** ユーザーインターフェイス
+** 実装指針
 ##--------------------------------------------------------------------
 
-
-スタックは陽に用いない。
+スタックは陽に操作せずに画像が生成できるように実装する。
 ただし、用いることもできるように。
 
-引数を持てる手続きを導入
+PreScriptはLispの自然な拡張になるように実装する。
+したがって、画像生成のための処理の内、
+PostScriptオペレータによる画像生成のための操作以外の部分で、Lisp機能を利用することができるように。
+これにより、あらかじめコストのかかる計算をLispに担わせることで、
+PostScriptインタープリタによる計算を極力減らすという手法が可能になるように。
+
+
+stringwidth等による計算は、PreScriptコードの実行過程でGhostScriptを呼び出し、先に計算を済ませる。
+計算はなるべくLispで行い、生成されたPostScriptコードを実行するインタープリタ(ビューア)は画像描写のみに専念できるように。
+
+
+引数が持てる手続きが定義できるdefprocを導入する。
+#+BEGIN_SRC lisp :exports code
+;; defproc: make ps proc, in user-space: s
+(defproc s box (dx dy)
+  (rlineto dx 0)
+  (rlineto 0 dy)
+  (rlineto (neg dx) 0)
+  (closepath))
+#+END_SRC
+
 
 #+BEGIN_SRC lisp :exports code
 ;; defop: make ps op, in prescript (all user-space)
@@ -216,19 +227,6 @@ PreScriptコードはより簡潔になるだろうか？
       (closepath)))
 #+END_SRC
 
-#+BEGIN_SRC lisp :exports code
-;; defproc: make ps proc, in user-space: s
-(defproc s box (dx dy)
-  (rlineto dx 0)
-  (rlineto 0 dy)
-  (rlineto (neg dx) 0)
-  (closepath))
-#+END_SRC
-
-stringwidth等による計算は、PreScriptコードの実行過程でGhostScriptを呼び出し、先に計算を済ませる。
-計算はなるべくLispで行い、生成されたPostScriptコードを実行するインタープリタ(ビューア)は画像描写のみに専念できるように。
-
-
 
 
 ##====================================================================
@@ -240,7 +238,7 @@ stringwidth等による計算は、PreScriptコードの実行過程でGhostScri
 ##====================================================================
 
 ##--------------------------------------------------------------------
-*** Example 3.1, p.23
+*** Example 3.1, p.23 [Box]
 ##--------------------------------------------------------------------
 PostScript style
 #+BEGIN_SRC lisp :exports code
@@ -323,7 +321,7 @@ And more
 ** Ch.4 Procedures and Variables
 ##====================================================================
 ##--------------------------------------------------------------------
-*** Example 4.1, p.30
+*** Example 4.1, p.30 [Box Again]
 ##--------------------------------------------------------------------
 
 PostScript style
@@ -434,7 +432,7 @@ showpage
 ** Ch.5 Printing Text
 ##====================================================================
 ##--------------------------------------------------------------------
-*** Example 5.1, p.36
+*** Example 5.1, p.36 [Typography]
 ##--------------------------------------------------------------------
 PostScript style
 #+BEGIN_SRC lisp :exports code
@@ -471,7 +469,7 @@ PreScript style
 
 
 ##--------------------------------------------------------------------
-*** Example 5.2, p.38
+*** Example 5.2, p.38 [Show Gorilla]
 ##--------------------------------------------------------------------
 PostScript style
 #+BEGIN_SRC lisp :exports code
@@ -523,20 +521,16 @@ PreScript style
 *** Example 5.3, p.40 [Typefaces]
 ##--------------------------------------------------------------------
 PostScript style
-
-
-## (moveto 72 (vpos)) => vpos 72 moveto # !!!
-## (trans-args (moveto 72 (vpos))) => 72 vpos moveto # !!!
-PreScript style
 #+BEGIN_SRC lisp :exports code
   (ps-view
    (-> (make-space)
        (def vpos 720)
-       (def word #"Typefaces")
-       (def choose-font {(setfont (findfont (scalefont 15)))})
+       (def wordy #"Typefaces")
+       (def choose-font {(findfont) (scalefont 15) (setfont)})
        (def newline {(def vpos (sub (vpos) 15))
-         (moveto 72 (vpos))})
-       (defproc print-word {(choose-font) (show (word)) (newline)})
+                     (moveto 72 (vpos))})
+       (def print-word {(choose-font) (show (wordy)) (newline)})
+       (vpos 72) (moveto)   ;;!!!!
        (print-word $Times-Roman)
        (print-word $Times-Bold)
        (print-word $Times-Italic)
@@ -556,135 +550,6 @@ PreScript style
        (showpage)))
 #+END_SRC
 
-#+BEGIN_SRC lisp :exports code
-(ps-view
-  (def vpos 720)
-  (def wordy #"Typefaces")
-  (def choosefont {(setfont (findfont) (scalefont 15))})
-  (def newline {(def vpos (sub (vpos) 15))
-                (trans-args (moveto 72 (vpos)))})    ; !!!
-  (def printword {(choosefont) (show (wordy)) (newline)})
-  (trans-args (moveto 72 (vpos)))                    ; !!!
-  (printword $Times-Roman)
-  (printword $Times-Bold)
-  (printword $Times-Italic)
-  (printword $Times-BoldItalic)
-  (newline)
-  (printword $Helvetica)
-  (printword $Helvatica-Bold)
-  (printword $Helvatica-Oblique)
-  (printword $Helvatica-BoldOblique)
-  (newline)
-  (printword $Courier)
-  (printword $Courier-Bold)
-  (printword $Courier-Oblique)
-  (printword $Courier-BoldOblique)
-  (newline)
-  (printword $Symbol)
-  (showpage))
-#+END_SRC
-
-###--------------------------------
-### !!! after lety-expand, trans-vars expand. 
-
-##---------------------------------
-PreScript style
-#+BEGIN_SRC lisp :exports code
-(defun show-sentence-at (string font-name font-scale/matrix x-pos y-pos)
-  (set-font font-name font-scale/matrix)
-  (show-at string x-pos y-pos))
-
-(defun show-at (string x-pos y-pos)
-  (moveto x-pos y-pos)
-  (show string))
-#+END_SRC
-
-##---------------------------------
-PreScript style
-#+BEGIN_SRC lisp :exports code
-(defmacro show-sentence-at2 (string font-name font-scale/matrix
-                             x-pos y-pos)
-  `(progn
-     (set-font ,font-name ,font-scale/matrix)
-     (show-at2 ,string ,x-pos ,y-pos)))
-
-(defmacro show-at2 (string x-pos y-pos)
-  `(progn
-     (trans-args (moveto ,x-pos ,y-pos))
-     (show ,string)))
-
-(ps-view
-  (lety ((vpos 720))
-    (def-proc new-line () ()
-      (setfy vpos (sub vpos 15)))
-    (def-proc print-word (font) ()
-     (show-sentence-at2 "Typefaces" font 15 72 vpos) ; !!!
-     (new-line))
-    (print-word $Times-Roman)
-    (print-word $Times-Bold)
-    (print-word $Times-Italic)
-    (print-word $Times-BoldItalic)
-    (new-line)
-    (print-word $Helvetica)
-    (print-word $Helvatica-Bold)
-    (print-word $Helvatica-Oblique)
-    (print-word $Helvatica-BoldOblique)
-    (new-line)
-    (print-word $Courier)
-    (print-word $Courier-Bold)
-    (print-word $Courier-Oblique)
-    (print-word $Courier-BoldOblique)
-    (new-line)
-    (print-word $Symbol)
-    (showpage)))
-#+END_SRC
-
-## ->
-## %!PS-Adobe-3.0
-## /vpos 720 def
-## /new-line { /vpos vpos 15 sub def } def
-## /print-word { /font exch def 
-##               font findfont 15 scalefont setfont
-##               72 vpos moveto
-##               (Typefaces) show 
-##               new-line } def
-## /Times-Roman print-word
-## /Times-Bold print-word
-## /Times-Italic print-word
-## /Times-BoldIitalic print-word
-## new-line
-## /Helvetica print-word
-## /Helvatica-Bold print-word
-## /Helvatica-Oblique print-word
-## /Helvatica-BoldOblique print-word
-## new-line
-## /Courier print-word
-## /Courier-Bold print-word
-## /Courier-Oblique print-word
-## /Courier-BoldOblique print-word
-## new-line
-## /Symbol print-word
-## showpage
-
-##---------------------------------
-PreScript style
-
-## (ps-view
-##   (let ((vpos 735))
-##     (mapc #'(^ (font-names)
-##                (mapc #'(^ (font-name)
-##                           (show-string "Typefaces" # Example 5.2
-##                                        72 (decf vpos 15)
-##                                        font-name 15))
-##                      font-names)
-##                (show-string "" 72 (decf vpos 15) #"Times-Roman" 15))
-##           '((#"Times-Roman" #"Times-Bold" #"Times-Italic" 
-##              #"Times-BoldIitalic")
-##             (#"Helvetica" #"Helvatica-Bold" #"Helvatica-Oblique"
-##              #"Helvatica-BoldOblique")
-##             (#"Courier" #"Courier-Bold" #"Courier-Oblique"
-##              #"Courier-BoldOblique")
-##             (#"Symbol")))))
 
 
 ##--------------------------------------------------------------------
@@ -694,216 +559,48 @@ PreScript style
 PostScript style
 #+BEGIN_SRC lisp :exports code
   (ps-view
-    (def Mainfont (findfont $Helvetica-Bold)
-                  (scalefont 15))
-    (def Sloganfont (findfont $Helvetica-Oblique)
-                    (scalefont 7))
-    (def Ownerfont (findfont $Helvetica)
-                   (scalefont 10))
-    (defproc right-show ()
-        (rmoveto (sub (exch (popy (stringwidth (dup)))
-                            120))
-                 0)
-        (show))
-    (defproc CardOutline ()
-      (newpath)
-      (moveto 90 90) (rlineto 0 144) (rlineto 252 0) (rlineto 0 -144)
-      (closepath)
-      (setlinewidth .5)
-      (stroke))
-    (defproc doBorder ()
-      (moveto 99 99) (rlineto 0 126) (rlineto 234 0) (rlineto 0 -126)
-      (closepath)
-      (setlinewidth 2)
-      (stroke))
-    (defproc Diamond ()
-      (newpath)
-      (moveto 207) (rlineto 36 -54) (rlineto -36 -54) (rlineto -36 54)
-      (closepath)
-      (setgray .8)
-      (filly))
-    (defproc doText ()
-      (setgray 0)
-      (moveto 90 180)
-      (setfont (MainFont))
-      (rightshow #"Diamond Cafe")
-      (moveto 90 168)
-      (setfont (SloganFont))
-      (rightshow #"The Club of Lonely Hearts")
-      (moveto 216 126)
-      (setfont (OwnerFont))
-      (show #"Sam Spade")
-      (moveto 216 111)
-      (show #"Owner"))
+   (-> (make-space)
+       (def Mainfont (findfont $Helvetica-Bold)
+         (scalefont 15))
+       (def Sloganfont (findfont $Helvetica-Oblique)
+         (scalefont 7))
+       (def Ownerfont (findfont $Helvetica)
+         (scalefont 10))
+       (def rightshow {(rmoveto (sub (exch (popy (stringwidth (dup))) ;!!!
+                                           120))
+                                0)
+                       (show)})
+       (def CardOutline {(newpath)
+                         (moveto 90 90) (rlineto 0 144) (rlineto 252 0) (rlineto 0 -144)
+                         (closepath) (setlinewidth .5) (stroke)})
+       (def doBorder {(moveto 99 99) (rlineto 0 126) (rlineto 234 0) (rlineto 0 -126)
+                      (closepath) (setlinewidth 2) (stroke)})
+       (def Diamond {(newpath)
+                     (moveto 207 216) (rlineto 36 -54) (rlineto -36 -54) (rlineto -36 54)
+                     (closepath) (setgray .8) (filly)})
+       (def doText {(setgray 0) (moveto 90 180)
+                    (setfont (MainFont))
+                    (rightshow #"Diamond Cafe")
+                    (moveto 90 168)
+                    (setfont (SloganFont))
+                    (rightshow #"\"The Club of Lonely Hearts\"")
+                    (moveto 216 126)
+                    (setfont (OwnerFont))
+                    (show #"Sam Spade")
+                    (moveto 216 111)
+                    (show #"Owner")})
   
-    (CardOutline)
-    (doBorder)
-    (Diamond)
-    (doText)
-    (showpage))
+       (CardOutline)
+       (doBorder)
+       (Diamond)
+       (doText)
+       (showpage)))
 #+END_SRC
 
-### c.f.
-## (def-proc right-show (str) ()
-##   (rmoveto (sub (y-value (stringwidth str))
-##                 120)
-##            0)
-##   (show str))
-
-## (defuny right-show (str)
-##   (rmoveto (sub (y-value (stringwidth str))
-##                 120)
-##            0)
-##   (show str))
-
-##---------------------------------
-#+BEGIN_SRC lisp :exports code
-(defmacro show-sentence-at2 (string font-name font-scale/matrix
-                             x-pos y-pos)
-  `(progn
-     (set-font ,font-name ,font-scale/matrix)
-     (show-at2 ,string ,x-pos ,y-pos)))
-
-(defmacro show-at2 (string x-pos y-pos)
-  `(progn
-     (trans-args (moveto ,x-pos ,y-pos))
-     (show ,string)))
-
-(ps-view
-  (lety ((main-font   (scalefont 15 (findfont #"Helvetica-Bold")))
-         (slogan-font (scalefont  7 (findfont #"Helvetica-Oblique")))
-         (owner-font  (scalefont 10 (findfont #"Helvetica"))))
-    (def-proc card-outline () ()
-      (closepath
-       (mrlines '((90 90) (0 144) (252 0) (0 -144))))
-      (setlinewidth .5)
-      (stroke))
-    (def-proc border () ()
-      (closepath
-       (mrlines '((99 99) (0 126) (234 0) (0 -126))))
-      (setlinewidth 2)
-      (stroke))
-    (def-proc diamond () ()
-      (closepath
-       (mrlines '((207 216) (36 -54) (-36 -54) (-36 54))))
-      (fill-gray .8))
-    (def-proc right-show-sentence-at (str font x-pos y-pos) ()
-      (apply #'setfont font)
-      (moveto x-pos y-pos)
-      (rmoveto (sub (x-value (stringwidth 120 str))) 0)
-      (show str))
-    (newpath) (card-outline)
-    (border)
-    (newpath) (diamond)
-    (setgray 0)
-    (trans-args                         # !!!
-     (right-show-sentence-at
-      "Diamond Cafe" main-font 90 180))
-    (trans-args                         # !!!
-     (right-show-sentence-at
-      "\"The Club of Lonely Hearts\"" slogan-font 90 168))
-    (setfont owner-font)
-    (show-at2 "Sam Spade" 216 126)
-    (show-at2 "Owner"     216 111)
-    (showpage)))
-#+END_SRC
-
-#+BEGIN_SRC ps :exports code
-%!PS-Adobe-3.0
-/main-font /Helvetica-Bold findfont 15 scalefont def
-/slogan-font /Helvetica-Oblique findfont 7 scalefont def
-/owner-font /Helvetica findfont 10 scalefont def
-/card-outline   {   90 90 moveto
-                 0 144 rlineto
-                 252 0 rlineto
-                  0 -144 rlineto
-                  closepath 
-                 0.5 setlinewidth 
-                 stroke } def
-/border   {   99 99 moveto
- 0 126 rlineto
- 234 0 rlineto
- 0 -126 rlineto
- closepath 
- 2 setlinewidth 
- stroke } def
-/diamond   {   207 216 moveto
- 36 -54 rlineto
- -36 -54 rlineto
- -36 54 rlineto
- closepath 
- 0.8 setgray
- fill } def
-/right-show-sentence-at   {  
-/y-pos  exch def 
-/x-pos  exch def 
-/font  exch def 
-/str  exch def 
- font setfont 
- x-pos y-pos moveto 
- str stringwidth pop 120 sub 0 rmoveto 
- str show } def
- newpath card-outline
- border
- newpath diamond
- 0 setgray
- (Diamond Cafe) main-font 90 180 right-show-sentence-at
- ("The Club of Lonely Hearts") slogan-font 90 168 right-show-sentence-at
- owner-font setfont
- 216 126 moveto
- (Sam Spade) show
- 216 111 moveto
- (Owner) show
- showpage
-
-/rightshow   {  
- dup stringwidth pop 120 exch sub 0 rmoveto  show } def
-/cardoutline   {  
- newpath 
- 90 90 moveto
- 0 144 rlineto
- 252 0 rlineto
- 0 -144 rlineto
- closepath 
- 0.5 setlinewidth  stroke } def
-/doborder   {  
- 99 99 moveto
- 0 126 rlineto
- 234 0 rlineto
- 0 -126 rlineto
- closepath 
- 2 setlinewidth  stroke } def
-/diamond   {  
- newpath 
- 207 216 moveto
- 36 -54 rlineto
- -36 -54 rlineto
- -36 54 rlineto
- closepath 
- 0.8 setgray fill } def
-/dotext   {  
- 0 setgray 
- 90 180 moveto 
- mainfont setfont 
- (Diamond Cafe) rightshow 
- 90 168 moveto 
- sloganfont setfont 
- ("The Club of Lonely Hearts") rightshow 
- 216 126 moveto 
- ownerfont setfont 
- (Sam Spade) show 
- 216 111 moveto 
- (Owner) show } def
- cardoutline
- doborder
- diamond
- dotext
-
-#+END_SRC
 ##---------------------------------
 PreScript style
-### (Less efficiency, but more readable & reusable.)
 
+mi
 #+BEGIN_SRC lisp :exports code
 (defun 4angle (x-side y-side x-pos y-pos
                &key (line-width 1) (gray-scale 0) (fill nil))
@@ -959,30 +656,39 @@ PreScript style
 ** Ch.6 More Graphics
 ##====================================================================
 ##--------------------------------------------------------------------
-*** Example 6.1, p.49
+*** Example 6.1, p.49 [3 Box]
 ##--------------------------------------------------------------------
-## ps-like style
-(ps-view
-  (set-font #"Times-Roman" 30)
-  (def square-box {(newpath)
-                   (closepath
-                    (mlines '((0 0) (90 0) (90 90) (0 90))))
-                   (filly)
-                   (moveto 6 92)
-                   (show "A Box")})
-  (square-box)
-  (translate 300 150)
-  (rotate 60)
-  (square-box)
-  (translate 300 150)
-  (rotate 60)
-  (square-box)
-  (showpage))
+#PostScript style
+
+#+BEGIN_SRC lisp :exports code
+  (defop set-font (font scale)
+    (findfont font)
+    (scalefont scale)
+    (setfont))
+  
+  (ps-view
+   (-> (make-space)
+       (set-font $Times-Roman 30)
+       (def square {(newpath)
+                    (moveto 0 0) (lineto 90 0) (lineto 90 90) (lineto 0 90)
+                    (closepath) (filly)
+                    (moveto 6 92)
+                    (show #"A Box")})
+       (square)
+       (translate 300 150)
+       (rotate 60)
+       (square)
+       (translate 300 150)
+       (rotate 60)
+       (square)
+       (showpage)))
+#+END_SRC
 
 ##---------------------------------
 ## lisp-like style
 ## (Less efficiency, but more readable & reusable & flexible.)
-
+mi
+#+BEGIN_SRC lisp :exports code
 (defun labeled-4angle (label x-side y-side x-pos y-pos
                &key (line-width 1) (gray-scale 0) (fill nil))
   (4angle x-side y-side x-pos y-pos     # Example 5.4
@@ -1005,9 +711,12 @@ PreScript style
   (coordinate-transform 300 150 60)
   (labeled-4angle "A Box" 90 90 0 0 :fill t)
   (showpage))
+#+END_SRC
 
 ##---------------------------------
 ## and more
+mi
+#+BEGIN_SRC lisp :exports code
 (ps-view
   (set-font #"Times-Roman" 30)
   (labeled-4angle "Box A" 90 90 0 0 :gray-scale 0.0 :fill t)
@@ -1016,27 +725,34 @@ PreScript style
   (coordinate-transform 300 150 60)
   (labeled-4angle "Box C" 90 90 0 0 :gray-scale 0.8 :fill t)
   (showpage))
+#+END_SRC
 
 
 ##--------------------------------------------------------------------
-*** Example 6., p.4
+*** Example 6.2, p.51 [Star]
 ##--------------------------------------------------------------------
-(ps-view
-  (def starside {(rlineto 72 0)
-                 (translate (currentpoint))
-                 (rotate -144)})
-  (def star {(moveto)
-             (repeat 4 (starside))
-             (closepath)
-             (gsave)
-             (setgray .5) (filly)
-             (grestore)
-             (stroke)})
-  (star 200 200)
-  (showpage))
+PostScript style
+#+BEGIN_SRC lisp :exports code
+  (ps-view
+   (-> (make-space)
+       (def starside {(rlineto 72 0)
+                      (translate (currentpoint))
+                      (rotate -144)})
+       (def star {(moveto) (translate (currentpoint))
+                  (repeat 4 (starside))
+                  (closepath)
+                  (gsave)
+                  (setgray .5) (filly)
+                  (grestore)
+                  (stroke)})
+       (star 200 200)
+       (showpage)))
+#+END_SRC
 
 ##---------------------------------
-## lisp-like style
+PreScript style
+mi
+#+BEGIN_SRC lisp :exports code
 (defmacro local-gstate (&body body)
   `(progn (gsave)
           ,@body
@@ -1054,58 +770,70 @@ PreScript style
              (stroke)})
   (star 200 200)
   (showpage))
+#+END_SRC
 
 
 ##--------------------------------------------------------------------
 *** Example 6., p.4
 ##--------------------------------------------------------------------
-(ps-view
-  (def doACircle {(stroke (arc 0 0 54 0 360))})
-  (def doAnEllipse {(scale 1 .75)
-                    (stroke (doACircle))})
-  (translate 300 500)
-  (doACircle)
-  (repeat 4 (translate 0 -72) (doAnEllipse))
-  (showpage))
 
+
+#+BEGIN_SRC lisp :exports code
+  (ps-view
+   (-> (make-space)
+       (def doACircle {(stroke (arc 0 0 54 0 360))})
+       (def doAnEllipse {(scale 1 .75)
+            (stroke (doACircle))})
+       (translate 300 500)
+       (doACircle)
+       (repeat 4 (translate 0 -72) (doAnEllipse))
+       (showpage)))
+#+END_SRC
 
 ##---------------------------------
-## lisp-like style
-## (Less efficiency, but more readable & reusable & flexible.)
+PreScript style
+
 
 
 ##--------------------------------------------------------------------
 *** Example 6., p.58, OMAHA
 ##--------------------------------------------------------------------
-## ps-like style
-(ps-view
-  (set-font #"Helvetica-Bold" 27)
-  (def 4pops (repeat 4 (popy)))
-  (def background
-    (moveto 0 18)
-    (4pops (arcto 0   72 108 78 18))
-    (4pops (arcto 108 72 108 0  18))
-    (4pops (arcto 108 0  0   0  18))
-    (4pops (arcto 0   0  0   72 18))
-    (filly))
-  (def moon
-    (setgray .6)
-    (filly (arc 81 45 18 0 360)))
-  (def omaha
-    (setgray 1)
-    (moveto 0 -1)
-    (scale 1 2)
-    (rmoveto 0 (div 2 (sub (exch 108 (popy (stringwidth "OMAHA"))))))
-    (show "OMAHA"))
-  (translate 255 465)
-  (omaha (moon (background)))
-  (showpage))
+#PostScript style
+#+BEGIN_SRC lisp :exports code
+  (ps-view
+   (-> (make-space)
+       (set-font $Helvetica-Bold 27)
+       (def 4pops {(repeat 4 (popy))})
+       (def background {(moveto 0 18)
+                        (4pops (arcto 0   72 108 78 18))
+                        (4pops (arcto 108 72 108 0  18))
+                        (4pops (arcto 108 0  0   0  18))
+                        (4pops (arcto 0   0  0   72 18))
+                        (filly)})
+       (def moon {(setgray .6)
+                  (filly (arc 81 45 18 0 360))})
+       (def omaha {(setgray 1)
+                   (moveto 0 -1)
+                   (scale 1 2)
+                   (popy (stringwidth #"OMAHA"))
+                   (div (sub (exch 108)) 2)
+                   (rmoveto 0)
+                   (show #"OMAHA")})
+       (translate 255 465)
+       (background)
+       (moon)
+       (omaha)
+       (showpage)))
+#+END_SRC
 
 ##---------------------------------
-## lisp-like style
+PreScript style
 ## More efficiency & readable. 
 ## "string-width" is not ps-op, but lisp-function.
 ## Its run time is in running lisp system. 
+
+mi
+#+BEGIN_SRC lisp :exports code
 (ps-view
   (set-font #"Helvetica-Bold" 27)
   (def 4pops (repeat 4 (popy)))
@@ -1126,12 +854,15 @@ PreScript style
     (rmoveto (/ (- 108 (string-width "OMAHA")) 2) 0)
     (show "OMAHA"))
   (translate 255 465)
+#+END_SRC
 
 ##---------------------------------
-## lisp-like style
+PreScript style
 ## More efficiency & readable. 
 ## "string-width" is not ps-op, but lisp-function.
 ## Its run time is in running lisp system. 
+mi
+#+BEGIN_SRC lisp :exports code
 (ps-view
   (set-font #"Helvetica-Bold" 27)
   (def 4pops {
@@ -1157,6 +888,7 @@ PreScript style
   (showpage))
   (omaha (moon (background)))
   (showpage))
+#+END_SRC
 
 
 ##====================================================================
@@ -1167,30 +899,36 @@ PreScript style
 *** Example 7.1, p.63 [Mark Twain]
 ##--------------------------------------------------------------------
 PostScript style
-(ps-view
-  (def LM 72)
-  (def RM 216)
-  (def ypos 720)
-  (def lineheight 14)
-  (def newline {(sub (ypos) (lineheight))
-                (def ypos (exch))
-                (moveto (LM) (ypos))})
-  (def prtstr {(ify (gt (add (popy (stringwidth (dup)))
-                             (popy (currentpoint)))
-                        (RM))
-                    (newline))
-               (show)})
-  (set-font #"Times-Italic" 13)
-  (moveto (LM) (ypos))
-  (prtstr "If ") (prtstr "you ") (prtstr "tell ") (prtstr "the ")
-  (prtstr "truth, ") (prtstr "you ") (prtstr "don't ")
-  (prtstr "have ") (prtstr "to ") (prtstr "remember ")
-  (prtstr "anything. ") (prtstr "- Mark ") (prtstr "Twain ")
-  (showpage))
+#+BEGIN_SRC lisp :exports code
+  (ps-view
+   (-> (make-space)
+       (def LM 72)
+       (def RM 216)
+       (def ypos 720)
+       (def lineheight 14)
+       (def newline {(sub (ypos) (lineheight))
+            (def ypos (exch))
+            (moveto (LM) (ypos))})
+       (def prtstr {(ify (gt (add (popy (stringwidth (dup)))
+                                  (popy (currentpoint)))
+                             (RM))
+                         (newline))
+            (show)})
+       (set-font $Times-Italic 13)
+       (LM) (ypos)
+       (moveto)
+       (prtstr #"If ") (prtstr #"you ") (prtstr #"tell ") (prtstr #"the ")
+       (prtstr #"truth, ") (prtstr #"you ") (prtstr #"don't ")
+       (prtstr #"have ") (prtstr #"to ") (prtstr #"remember ")
+       (prtstr #"anything. ") (prtstr #"- Mark ") (prtstr #"Twain ")
+       (showpage)))
+#+END_SRC
 
 
 
 ##---------------------------------
+mi
+#+BEGIN_SRC lisp :exports code
 (ps-view
   (let ((left-margin 72) (right-margin 216)
         (y-pos 720)      (line-height 14))
@@ -1210,6 +948,8 @@ PostScript style
             "(you )" "(don't )" "(have )" "(to )" "(remember )"
             "(anything.)" "(- Mark )" "(Twain )"))
     (showpage)))
+#+END_SRC
+
 
 ##--------------------------------------------------------------------
 *** Example 7.2, p.66 [Planes]
@@ -1221,20 +961,17 @@ PostScript style
    (-> (make-space)
        (def scalefactor 1)
        (def counter 0)
-       (defproc DecreaseScale
-           (def scalefactor (sub (scalefactor) .2)))
-       (defproc IncreaseCounter
-           (def counter (add (counter) 1)))
-       (defproc trappath ()
-         (moveto 0 0)
-         (rlineto 90 0) (rlineto -20 45) (rlineto -50 0)
-         (closepath))
-       (defproc doATrap
-           (local-gstate
-            (scale (scalefactor 1))
-            (trappath)
-            (ifelse (eqy 0 (mody (counter) 2)) .5 0)
-            (fill-gray)))
+       (def DecreaseScale {(def scalefactor (sub (scalefactor) .2))})
+       (def IncreaseCounter {(def counter (add (counter) 1))})
+       (def trappath {(moveto 0 0) (rlineto 90 0)
+                      (rlineto -20 45) (rlineto -50 0)
+                      (closepath)})
+       (def doATrap {(gsave)
+                       (scale (scalefactor 1))
+                       (trappath)
+                       (ifelse (eqy 0 (mody (counter) 2)) .5 0)
+                       (setgray) (filly)
+                     (grestore)})
        (translate 250 350)
        (repeat 5 (IncreaseCounter)
                  (doATrap)
@@ -1244,6 +981,7 @@ PostScript style
 #+END_SRC
 
 ##---------------------------------
+mi
 #+BEGIN_SRC lisp :exports code
 (ps-view
   (let ((scale-factor 1))
@@ -1263,40 +1001,46 @@ PostScript style
 ##--------------------------------------------------------------------
 *** Example 7.3, p.68 [Zip]
 ##--------------------------------------------------------------------
-(ps-view
-  (set-font #"Times-Iitalic" 30)
-  (def printZip {(moveto 0 0)
-                 (show "Zip")})
-  (translate 320 400)
-  (fory .95 -.05 0
-        (setgray)
-        (printZip)
-        (translate -1 .5))
-  (setgray 1)
-  (printZip)
-  (showpage))
+#+BEGIN_SRC lisp :exports code
+  (ps-view
+   (-> (make-space)
+       (set-font $Times-Iitalic 30)
+       (def printZip {(moveto 0 0) (show #"Zip")})
+       (translate 320 400)
+       (fory .95 -.05 0
+             (setgray)
+             (printZip)
+             (translate -1 .5))
+       (setgray 1)
+       (printZip)
+       (showpage)))
+#+END_SRC
 
 
 ##--------------------------------------------------------------------
 *** Example 7.4, p.69-70 [Line of Circle]
 ##--------------------------------------------------------------------
 ### 
-(ps-view
-  (def pagewidth (mul 8.5 72))
-  (def doCircle {(stroke (arc (xpos) (ypos) (radius) 0 360))}) #!!!
-  (def inc-x {(def xpos (add (xpos) (radius)))})
-  (def lineofcircle {(def ypos (exch))
-                     (def radius (exch))
-                     (def xpos 0)
-                     (loopy (ifelse (le (xpos) (pagewidth))
-                                    (inc-x (doCircle)) #!!!
-                                    (exit)))})
-  (lineofcircle 10 400)
-  (lineofcircle 30 400)
-  (lineofcircle 90 400)
-  (showpage))
+#+BEGIN_SRC lisp :exports code
+  (ps-view
+   (-> (make-space)
+       (def pagewidth (mul 8.5 72))
+       (def doCircle {(stroke (arc (xpos) (ypos) (radius) 0 360))}) #!!!
+       (def inc-x {(def xpos (add (xpos) (radius)))})
+       (def lineofcircle {(def ypos (exch))
+            (def radius (exch))
+            (def xpos 0)
+            (loopy (ifelse (le (xpos) (pagewidth))
+                           (inc-x (doCircle)) #!!!
+                           (exit)))})
+       (lineofcircle 10 400)
+       (lineofcircle 30 400)
+       (lineofcircle 90 400)
+       (showpage)))
+#+END_SRC
 
 ##---------------------------------
+#+BEGIN_SRC lisp :exports code
 (defun line-circles (x-pos y-pos radius)
   (let ((page-width (* 8.5 72)))
     (do ((i x-pos  (+ i radius)))
@@ -1309,8 +1053,10 @@ PostScript style
   (line-circles 0 400 30)
   (line-circles 0 400 90)
   (showpage))
+#+END_SRC
 
 ##---------------------------------
+#+BEGIN_SRC lisp :exports code
 (defmacro setfy (old-val new-val)
   (if (listp old-val)
       `(def ,@old-val ,new-val)
@@ -1341,13 +1087,15 @@ PostScript style
   (line-circle 0 400 30)
   (line-circle 0 400 90)
   (showpage))
+#+END_SRC
 
 ##--------------------------------------------------------------------
 *** Example 7.5, p.71 [Factorial]
 ##--------------------------------------------------------------------
+#+BEGIN_SRC lisp :exports code
 (ps-view
   (def LM 72)
-  (set-font #"Times-Roman" 15)
+  (set-font $Times-Roman 15)
   (def nstr (stringy 7))
   (def newline {(sub (currentpoint) 16)
                 (exch) (popy)
@@ -1364,10 +1112,13 @@ PostScript style
   (fory 1 1 10
         (prtFactorial))
   (showpage))
+#+END_SRC
 
 ##---------------------------------
 ## That's cl-ps style!!
 ## CL calculates, PS draws only.
+
+#+BEGIN_SRC lisp :exports code
 (defun fact (n)
   (labels ((rec (n acc)
              (if (= n 0)
@@ -1376,7 +1127,7 @@ PostScript style
     (rec n 1)))
 
 (ps-view
-  (set-font #"Times-Roman" 15)
+  (set-font $Times-Roman 15)
   (let ((x-pos 72) (y-pos 616))
     (dotimes (i 10)
       (moveto x-pos (decf y-pos 16))
@@ -1384,11 +1135,13 @@ PostScript style
                            "! = "
                            (write-to-string (fact (1+ i))))))
     (showpage)))
+#+END_SRC
 
 
 ##--------------------------------------------------------------------
 *** Example 7.6, p.73-5 [Arrow Tree]
 ##--------------------------------------------------------------------
+#+BEGIN_SRC lisp :exports code
 (ps-view
   (def depth 0)
   (def maxdepth 10)
@@ -1408,9 +1161,11 @@ PostScript style
   (moveto 300 400)
   (stroke (FractArrow))
   (showpage))
+#+END_SRC
 
 
 ##---------------------------------
+#+BEGIN_SRC lisp :exports code
  (defun do-line ()
     (rlineto 0 144)
     (currentpoint)
@@ -1442,9 +1197,11 @@ PostScript style
   (fract-arrow 1 .7)
   (stroke)
   (showpage))
+#+END_SRC
 
 
 ##---------------------------------
+#+BEGIN_SRC lisp :exports code
 (ps-view
   (def doline {(rlineto 0 144)
                (currentpoint)
@@ -1465,6 +1222,7 @@ PostScript style
   (fract-arrow 10 .7)
   (stroke)
   (showpage))
+#+END_SRC
 
 
 ##====================================================================
@@ -1531,7 +1289,7 @@ PostScript style
   (def FontList ([ ([ "The five boxing wizards jump quickly."
                       #"Helvetica" ])
                    ([ "The five boxing wizards jump quickly."
-                      #"Times-Roman" ])
+                      $Times-Roman ])
                    ([ "The five boxing wizards jump quickly."
                       #"Symbol" ]) ]))
   (moveto (LM) 600)
@@ -1566,7 +1324,7 @@ PostScript style
     (moveto (LM) (TM))
     (setgray .5)
     (fillpage "Binky Inc.")
-    (set-font #"Times-Roman" 30)
+    (set-font $Times-Roman 30)
     (moveto (div (sub (sub (RM) (LM))
                       (popy (stringwidth "Binky Inc.")))
                  2)
@@ -1577,7 +1335,7 @@ PostScript style
 
 
 ##---------------------------------
-## lisp-like style
+PreScript style
 ## (ps-view
 ##   (let ((top-margin 780) (bottom-margin -12)
 ##         (left-margin 0)  (right-margin 612))
@@ -1587,7 +1345,7 @@ PostScript style
 
 
 
-##     (set-font #"Times-Roman" 30)
+##     (set-font $Times-Roman 30)
 ##     (moveto (/ (- (string-width "Binky Inc.")
 ##                   (- right-margin left-margin))
 ##                2)
@@ -1603,7 +1361,7 @@ PostScript style
 ##--------------------------------------------------------------------
 PostScript style
 (ps-view
-  (set-font #"Times-Roman" 10)
+  (set-font $Times-Roman 10)
   (def chary (stringy 1))
   (def nstr  (stringy 3))
   (def LM 72)                           #!? before def not!!
@@ -1626,7 +1384,7 @@ PostScript style
 
 
 ##---------------------------------
-## lisp-like style
+PreScript style
 
 
 
@@ -1636,7 +1394,7 @@ PostScript style
 ##--------------------------------------------------------------------
 PostScript style
 (ps-view
-  (def basefont (findfont #"Times-Roman"))
+  (def basefont (findfont $Times-Roman))
   (def LM 72)
   (def newline {(currentpoint) (sub 13)
                 (exch) (popy) (LM)
@@ -1693,7 +1451,7 @@ PostScript style
 
 
 ##---------------------------------
-## lisp-like style
+PreScript style
 (defun outline-show (string)
   (stroke (charpath string t)))
  
@@ -1798,7 +1556,7 @@ PostScript style
 ## !!!!!
 (ps-view
   (def ypos 130)
-  (set-font #"Times-Roman" 6)
+  (set-font $Times-Roman 6)
   (def prt-n {(show (cvs " "))})        # !?!?!?
   (def borders {(mrlines '((-2.5 0) (0 135)))
                 (mrlines '((102.5 0) (0 135)))
@@ -1830,7 +1588,7 @@ PostScript style
 
 
 ##---------------------------------
-## lisp-like style
+PreScript style
 ### (Less efficiency, but more readable & reusable & flexible.)
 
 
@@ -1915,7 +1673,7 @@ PostScript style
 
 
 ##---------------------------------
-## lisp-like style
+PreScript style
 ### (Less efficiency, but more readable & reusable & flexible.)
 (defmacro local-gstate (&body body)
   `(progn (gsave)
@@ -1986,7 +1744,7 @@ PostScript style
 
 
 ##---------------------------------
-## lisp-like style
+PreScript style
 ### (Less efficiency, but more readable & reusable & flexible.)
 (ps-view
   (def centersquare {(newpath)
@@ -2095,7 +1853,7 @@ PostScript style
 
 
 ##---------------------------------
-## lisp-like style
+PreScript style
 (defmacro local-dict (dict-name &body body)
   (if (numberp (car body))
       `(progn (def ,dict-name (dict ,(car body)))
@@ -2172,7 +1930,7 @@ PostScript style
   (showpage))
 
 ##---------------------------------
-## lisp-like style
+PreScript style
 (defun ellipse (x y xrad yrad start-ang end-ang)
   (local-?
     (translate x y)
@@ -2341,7 +2099,7 @@ PreScript style
                   (show)
                   (currentpoint))
                 (moveto))})
- (set-font #"Times-Roman" 18)
+ (set-font $Times-Roman 18)
  (moveto 72 500)
  (show "To read means to obtain meaning from")
  (show " words, and")
@@ -2391,15 +2149,15 @@ PreScript style
                        (setfont (fractionfont))
                        (show (denominatory))
                        (setfont (regularfont)))})
-  (set-font #"Times-Roman" 300)
+  (set-font $Times-Roman 300)
   (moveto 100 72)
   (fractionshow "7" "8")
-  (set-font #"Times-Roman" 18)
+  (set-font $Times-Roman 18)
   (moveto 72 550)
   (show "Slowly stir in 5")
   (fractionshow "1" "2")
   (show "lbs. of chocolate and then blend on high.")
-  (set-font #"Times-Roman" 40)
+  (set-font $Times-Roman 40)
   (moveto 420 650)
   (fractionshow "13" "22")
   (moveto 100 450)
@@ -2442,15 +2200,15 @@ PreScript style
       (setfont fract-font)
       (show denom)
       (setfont regular-font)))
-  (set-font #"Times-Roman" 300)
+  (set-font $Times-Roman 300)
   (moveto 100 72)
   (fract-show "7" "8")
-  (set-font #"Times-Roman" 18)
+  (set-font $Times-Roman 18)
   (moveto 72 550)
   (show "Slowly stir in 5")
   (fract-show "1" "2")
   (show "lbs. of chocolate and then blend on high.")
-  (set-font #"Times-Roman" 40)
+  (set-font $Times-Roman 40)
   (moveto 420 650)
   (fract-show "13" "22")
   (moveto 100 450)
@@ -2556,7 +2314,7 @@ PreScript style
   (translate 306 448)
   (outsidecircletext "Symphony No.9 (The Choral Symphony)"
                      22 90 140)
-  (set-font #"Times-Roman" 15)
+  (set-font $Times-Roman 15)
   (outsidecircletext "Ludwig von Beethoven"
                      15 90 118)
   (insidecircletext "The New York Philharmonic Orchestra"
@@ -2620,7 +2378,7 @@ PreScript style
   (translate 306 448)
   (outside-circle-text "Symphony No.9 (The Choral Symphony)"
                        22 90 140)
-  (set-font #"Times-Roman" 15)
+  (set-font $Times-Roman 15)
   (outside-circle-text "Ludwig von Beethoven"
                        15 90 118)
   (inside-circle-text "The New York Philharmonic Orchestra"
@@ -2683,7 +2441,7 @@ PreScript style
     (proc (getinterval (textstring)
                        (startchar)
                        (sub (lastchar) (startchar))))})
-  (set-font #"Times-Roman" 16)
+  (set-font $Times-Roman 16)
   (def yline 650)
   (BreaklntoLines
 "In every period there have been better or worse\\
@@ -2742,10 +2500,10 @@ than a trade. \\261Daniel Berkeley Updike."
                    (big-pic-proc)
                    (local-gstate (showpage)))))})
   (def sale-sign {(local-gstate
-                    (set-font #"Times-Roman" 500)
+                    (set-font $Times-Roman 500)
                     (moveto (inch 2.5) (inch 11))
                     (show "SALE")
-                    (set-font #"Times-Roman" 350)
+                    (set-font $Times-Roman 350)
                     (moveto (inch 1.45) (inch 4))
                     (setgray .5) (show "50%")
                     (setgray  0) (show "OFF")
@@ -2792,10 +2550,10 @@ than a trade. \\261Daniel Berkeley Updike."
             big-pic-proc
             (local-gstate (showpage))))))
   (def sale-sign {(local-gstate
-                    (set-font #"Times-Roman" 500)
+                    (set-font $Times-Roman 500)
                     (moveto (inch 2.5) (inch 11))
                     (show "SALE")
-                    (set-font #"Times-Roman" 350)
+                    (set-font $Times-Roman 350)
                     (moveto (inch 1.45) (inch 4))
                     (setgray .5) (show "50%")
                     (setgray  0) (show "OFF")
