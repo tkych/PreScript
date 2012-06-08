@@ -1,4 +1,4 @@
-Last Updated : 2012/06/06 16:56:17 tkych
+Last Updated : 2012/06/08 21:35:50 tkych
 
 *!!!Warning!!!*
 
@@ -6,20 +6,20 @@ Last Updated : 2012/06/06 16:56:17 tkych
 
 *Current purpose of PreScript repository is to back up files.*
 
-*Current status of this document is a mere devlopment-memo.*
+*Current status of this document is a mere devlopment-note.*
 
 
-PreScript: PostScript Interface for Common Lisp
+PreScript: Page Description DSL for Common Lisp
 ===============================================
 
 
 Introduction
 ------------
 
-PreScript is Graphic & Typsetting DSL (or PostScript Interface) for Common Lisp.
+PreScript is Drawing & Typsetting DSL (or PostScript Interface) for Common Lisp.
 
 Roughly speaking, PreScript is [PostScript][] represented as S-expressions (PostScript is a registered trademark of [Adobe Systems Inc.][]).
-PostScript is stack-based, postfix notation style, Turing-complete programming language with numerous operators for image generation.
+PostScript is stack-based, postfix notation style and Turing-complete programming language with numerous operators for image generation.
 PreScript generates PostScript code, and outputs the image to the appropriate viewer.
 In PreScript, we can easily write code without having to worry about stack mechanism that is the cause of the complexity of the PostScript code.
 

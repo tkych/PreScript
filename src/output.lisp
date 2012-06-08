@@ -1,16 +1,44 @@
-;;;; Last Updated : 2012/06/05 16:50:33 tkych
+;;;; Last Updated : 2012/06/08 20:03:46 tkych
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; !!!Warning!!!
 ;; Current version of PreScript is 0.0.~~ (experimental alpha).
 ;; Current purpose of PreScript repository is to back up files.
-;; Current status of this code is a mere devlopment-note.
+;; Current status of this code is a mere devlopment-memo.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
- 
-;(in-package :in-prescript)
+
+;; Output Operators in PreScript
+
+;; Copyright (c) 2012 Takaya OCHIAI
+
+;; Permission is hereby granted, free of charge, to any person
+;; obtaining a copy of this software and associated documentation
+;; files (the "Software"), to deal in the Software without
+;; restriction, including without limitation the rights to use, copy,
+;; modify, merge, publish, distribute, sublicense, and/or sell copies
+;; of the Software, and to permit persons to whom the Software is
+;; furnished to do so, subject to the following conditions:
+
+;; The above copyright notice and this permission notice shall be
+;; included in all copies or substantial portions of the Software.
+
+;; THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+;; EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+;; MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+;; NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+;; BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+;; ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+;; CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+;; SOFTWARE.
+
+
 ;;====================================================================
 ;; PS-OUTPUT, PS-VIEW
 ;;====================================================================
+(in-package #:in-prescript)
+
 (defun ps-output (space)
   (output-prolog space)
   (output-script space)
@@ -18,25 +46,21 @@
 
 (defun output-prolog (space)
   (format t "~&%!PS-Adobe-3.0")
-  (output-vars-procs space)
+  (output-vars space)
   (format t "~%%%END PROLOG"))
 
-(defun output-vars-procs (space)
-  (with-slots (vars procs dict) space
-    (when vars
-      (format t "~%%%------------------- Variable~P -------------------"
-              (length vars))
-      (dolist (var (reverse vars))
-        (format t "~%~A~%" (gethash var dict))))
-    (when procs
-      (format t "~%%%------------------- Procedure~P ------------------"
-              (length procs))
-      (dolist (proc (reverse procs))
-        (format t "~%~A~%" (gethash proc dict))))))
-
+(defun output-vars (space)
+  (with-slots (vars dict) space
+     (when vars
+       (dolist (var (reverse vars))
+         (let ((body (gethash var dict)))
+           (format t "~%~A~%" (if (lazy? body)
+                                  (let ((slender (diet body)))
+                                    (push-hash var slender dict)
+                                    slender)
+                                  body)))))))
 
 (defun output-script (space)
-  (format t "~%%%------------------- Script ---------------------~%")
   (princ (with-output-to-string (s)
            (format s "~&~{~A~^~&~}" (reverse (:oprd space))))))
 

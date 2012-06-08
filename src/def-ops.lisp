@@ -1,17 +1,43 @@
-;;;; Last Updated : 2012/06/06 19:21:59 tkych
+;;;; Last Updated : 2012/06/08 20:05:48 tkych
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; !!!Warning!!!
 ;; Current version of PreScript is 0.0.~~ (experimental alpha).
 ;; Current purpose of PreScript repository is to back up files.
-;; Current status of this code is a mere devlopment-note.
+;; Current status of this code is a mere devlopment-memo.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-;(in-package :in-prescript)
+;; Def Operators in PreScript
+
+;; Copyright (c) 2012 Takaya OCHIAI
+
+;; Permission is hereby granted, free of charge, to any person
+;; obtaining a copy of this software and associated documentation
+;; files (the "Software"), to deal in the Software without
+;; restriction, including without limitation the rights to use, copy,
+;; modify, merge, publish, distribute, sublicense, and/or sell copies
+;; of the Software, and to permit persons to whom the Software is
+;; furnished to do so, subject to the following conditions:
+
+;; The above copyright notice and this permission notice shall be
+;; included in all copies or substantial portions of the Software.
+
+;; THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+;; EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+;; MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+;; NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+;; BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+;; ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+;; CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+;; SOFTWARE.
+
+
 ;;====================================================================
 ;; DEF, DEFPROC
 ;;====================================================================
-;; (def space name {,@body}) <=> (defproc space name () . body)
+(in-package #:in-prescript)
 
 (defun have-var? (var-tag space)
   (member var-tag (:vars space)))
@@ -45,13 +71,18 @@
     (mappend (^ (x) (nreverse (rec x nil nil nil)))
              forms)))
 
-(defmacro make-var-body (space name body)
+(defmacro make-lazy-body (space name body)
   (with-gensyms (stream tmp-space)
-    `(with-output-to-string (,stream)
-       (let ((,tmp-space (copy-space ,space :oprd nil :dict nil)))
-         (-> ,tmp-space ,@(trans-args body))
-         (format ,stream "~&/~A~{ ~A~^~&~} def" ',name
-                 (nreverse (:oprd ,tmp-space)))))))
+    `(cons :lazy
+           (^ () (with-output-to-string (,stream)
+                   (let ((,tmp-space
+                          (copy-space ,space :oprd nil :dict nil)))
+                     (-> ,tmp-space ,@(trans-args body))
+                     (format ,stream "~&/~A~{ ~A~^~&~} def" ',name
+                             (nreverse (:oprd ,tmp-space)))))))))
+
+(defun lazy? (x) (and (consp x) (eql :lazy (car x))))
+(defun diet (lazy-body) (funcall (cdr lazy-body)))
 
 (defmacro defun-var (var-name var-key)
   `(defun ,var-name (space &rest args)
@@ -67,10 +98,9 @@
 
 (defmacro def (space name &body body)
   (let ((var-key (as-key name)))
-    (with-gensyms (s var-body)
-      `(let* ((,s ,space) ;for (-> (make-space) (defvar name ...))
-              (,var-body (make-var-body ,s ,name ,body)))
-         (push-var ,var-key ,var-body ,s)
+    (with-gensyms (s)
+      `(let ((,s ,space)) ;for (-> (make-space) (defvar name ...))
+         (push-var ,var-key (make-lazy-body ,s ,name ,body) ,s)
          (defun-var ,name ,var-key)
          (values ,s ',name)))))
 
